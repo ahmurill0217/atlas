@@ -6,48 +6,42 @@ Atlas is a knowledge graph over a company's email, documents and meetings (Gmail
 - "Who at Acme have we dealt with, and when did we last talk?"
 - "Prep me for a call with Tom."
 
-`atlas ask` sends each question to the part that can answer it:
+`atlas ask` gives a model (gpt-5.5 by default) tools over both, and checks its answer before showing it:
 
-| Question | Example | Answered by |
-|---|---|---|
-| Relationship | who, how often, when, who at a company | the graph (exact, over every email) |
-| Content | what was said, proposed, decided | brain (search + LLM) |
-| Mixed | call prep, "who is X and what do they work on" | both, in two labelled sections |
+| Tool | What it answers |
+|---|---|
+| `find` | who or what a name means ("Sarah", "bofa", "the Darwin standup"), ranked by who you deal with |
+| `interactions`, `contacts`, `participants` | the graph, exact over every email and meeting: who, with whom, how often, first and last, who attended |
+| `search`, `read` | the text: what was said, proposed or decided, and by whom |
 
-- **Names as people write them:** "Sarah" becomes the Sarah you email most, and the answer says so.
-- **No guessing on ambiguous names:** if two Sarahs are close, `atlas ask` returns the candidates as a clarifying question (route `clarify`).
-
-Every claim cites the email it comes from:
+- **Every claim cites a tool result:** G# for a graph record, S# for a passage of text, with the exact words quoted.
+- **Every answer is verified** before it is shown: quotes must appear in the cited passage, and numbers and dates in the cited evidence. Parts that fail go back to the model; what still fails is removed and reported.
+- **Ambiguous names get a question back** ("Which Sarah do you mean?"), not a guess.
 
 ```
 $ atlas ask "When did Phillip Allen last email Keith Holst, and what was it about?"
-Route: mixed
-
-**From the relationship graph** (email metadata, every email)
-- Last email from Phillip Allen to Keith Holst: 2001-05-07 [G23].
-
-**From the emails**
-The last email that Phillip Allen sent to Keith Holst was on May 7, 2001, with the subject
-"California Update 5/4/01" ... [[7]]()
+Phillip Allen's last email to Keith Holst was on 2001-05-07; the email was titled
+"California Update 5/4/01" [G9] [G14].
+The email was a forwarded California update from Kristin Walsh ... [S1].
 
 Sources:
-  [G23] California Update 5/4/01 (2001-05-07)  e63586cb-...  (graph)
-  [7]   California Update 5/4/01 (2001-05-07)  e63586cb-...  (search)
+  [G9]  California Update 5/4/01 (2001-05-07)  e63586cb-...  (graph)
+  [S1]  California Update 5/4/01 (2001-05-07)  e63586cb-...  (search)
+        "If you have any questions, please contact Kristin Walsh"
 ```
+
+A platform with its own agent uses the same pieces as a library: `AtlasTools` (`atlas/retrieval/tools.py`), `ANSWER_SCHEMA`, `verify` and `render` (`atlas/retrieval/verify.py`).
 
 ## Status
 
-The system has been tested on 5,000 Enron emails.
+Tested on 5,000 Enron emails, four work documents and one 70-minute meeting, about 60 questions (`docs/ask_evaluation.md`).
 
-- **Content questions:** brain answers well.
-- **Relationship questions:** the graph answers exactly; plain retrieval can't count.
-- **Mixed questions:** the combination beats plain retrieval.
-- **Citations:** 81% of cited claims are backed by the cited email, and every graph citation is.
+- **The agent beats the earlier router on every set.** It gets relationship questions exactly, answers content questions without filler, and handles meetings (the router couldn't).
+- **Time:** simple questions take about 5–7 s; call prep takes about 35 s (up to 75 s).
 
 **Next:** a pilot on real Gmail, Drive and Fathom data with real questions.
 
 **Not built yet:**
-- checking citations at answer time;
 - reconstructing deals ("how did we close this deal");
 - linking the people and companies mentioned inside document text.
 
@@ -62,7 +56,7 @@ source (email / meeting / Drive JSON, PDF, DOCX, text)
   │     ontology-checked, one person across addresses, evidence on every fact, review queue, audit log
   └─► brain index (OpenSearch)                each document's own text, headed by From/To/Date/Subject
                      shared key: document_id
-atlas ask → graph facts [G#] and/or brain retrieval [n] → cited answer
+atlas ask → model calls graph tools [G#] and search [S#] → answer → verifier → cited answer
 ```
 
 - The ontology in `ontology/` is the only schema. Nothing outside it can enter the graph.
@@ -101,7 +95,7 @@ uv run python -m atlas ontology --details
 ```
 
 - `--as <email>` says who is asking, so "I", "we" and "you" mean someone.
-- `--mode` accepts `auto` (the default), `relationship` (graph only), `content` (brain with the graph profile) or `baseline` (brain alone).
+- `--mode` accepts `agent` (the default). The earlier router is kept as a baseline: `auto`, `relationship` (graph only), `content` (brain with the graph profile) and `baseline` (brain alone).
 
 **Input formats:**
 - email JSON (Gmail-style headers);
@@ -175,7 +169,7 @@ uv run python -m atlas ask "Who have I emailed most this year?" --as you@gmail.c
 | `atlas/ingestion` | source adapters, normalized documents, segmentation |
 | `atlas/extraction`, `compiler`, `resolution`, `ontology` | metadata → candidates → the only path into the graph |
 | `atlas/graph`, `review`, `provenance` | storage, queries, viewer, review queue, audit and evidence |
-| `atlas/retrieval` | brain indexing, graph facts for questions, the router |
+| `atlas/retrieval` | brain indexing, the tools, the verifier, the answer loop (`agent.py`); the earlier router |
 | `ontology/` | the ontology (versioned in its files; `CHANGELOG.md`) |
 | `scripts/` | Enron and Gmail Takeout converters, sample generator, ask evaluator, citation audit |
 | `docs/` | architecture, reference, evaluation, findings |

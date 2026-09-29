@@ -164,8 +164,13 @@ def index(force: bool = typer.Option(False, "--force", help="Re-embed documents 
     typer.echo(_dump(stats))
 
 
-def run_ask(question: str, mode: str = "auto", asker: str | None = None) -> dict:
-    """Answer one question (see atlas.retrieval.router for the modes)."""
+def run_ask(question: str, mode: str = "agent", asker: str | None = None) -> dict:
+    """Answer one question: mode agent is the tool-using loop (atlas.retrieval.agent); the
+    others are the router's (atlas.retrieval.router)."""
+    if mode == "agent":
+        from atlas.retrieval.agent import answer
+
+        return answer(question, asker=asker)
     from atlas.retrieval.router import ask as route_and_answer
 
     return route_and_answer(question, mode=mode, asker=asker)
@@ -173,12 +178,13 @@ def run_ask(question: str, mode: str = "auto", asker: str | None = None) -> dict
 
 @app.command()
 def ask(question: str,
-        mode: str = typer.Option("auto", "--mode", help="auto (route the question), relationship (graph only), "
+        mode: str = typer.Option("agent", "--mode", help="agent (a model calling graph and search tools, answers "
+                                 "verified), auto (route the question), relationship (graph only), "
                                  "content (brain + graph profile), baseline (brain alone)."),
         asker: str = typer.Option(None, "--as", help="Email of the person asking, so I / we / you resolve."),
         as_json: bool = typer.Option(False, "--json")) -> None:
-    """Answer a question. Relationship questions go to the graph, content questions to brain,
-    mixed ones to both."""
+    """Answer a question with cited, verified sources. By default a model calls the graph and
+    search tools; --mode auto and the others run the earlier router, kept as a baseline."""
     result = run_ask(question, mode=mode, asker=asker)
     if as_json:
         typer.echo(_dump(result))
@@ -190,7 +196,10 @@ def ask(question: str,
     if result["citations"]:
         typer.echo("\nSources:")
         for c in result["citations"]:
-            typer.echo(f"  [{c['marker']}] {c['title']} ({(c['date'] or '')[:10]})  {c['document_id']}  ({c['source']})")
+            typer.echo(f"  [{c['marker']}] {c['title']} ({(c['date'] or '')[:10]})  {c['document_id']}  ({c['source']})"
+                       + (f'\n        "{c["quote"]}"' if c.get("quote") else ""))
+    for d in result.get("dropped") or []:
+        typer.echo(f"\nRemoved (not verified): {d['text']}  [{'; '.join(d['problems'])}]")
 
 
 @app.command()

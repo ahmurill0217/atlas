@@ -174,4 +174,4 @@ def test_a_bare_name_does_not_shadow_first_names(contacts, kg):
 def test_a_name_nobody_has_is_noted_not_guessed(contacts):
     with Session(contacts) as s:
         ctx = graph_context(s, "Prep me for a call with Zed", people=[_person("Zed")])
-    assert ctx.entities == [] and ctx.notes == ['No one called "Zed" appears in the email metadata.']
+    assert ctx.entities == [] and ctx.notes == [] and ctx.unknown == ['No one called "Zed" is in the relationship graph.']

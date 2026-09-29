@@ -25,8 +25,8 @@ from atlas.db.session import session_scope
 
 app = typer.Typer(add_completion=False)
 
-_SENTENCE = re.compile(r"[^.\n]*?(?:\[\[\d+\]\]\(\)|\[G\d+\])[^.\n]*[.\n]?")
-_SEARCH = re.compile(r"\[\[(\d+)\]\]\(\)")
+_SENTENCE = re.compile(r"[^.\n]*?(?:\[\[\d+\]\]\(\)|\[[GS]\d+\])[^.\n]*[.\n]?")
+_SEARCH = re.compile(r"\[\[(\d+)\]\]\(\)|\[(S\d+)\]")      # router: [[n]](); agent: [S#]
 _GRAPH = re.compile(r"\[(G\d+)\]")
 _DATE = re.compile(r"\b(\d{4}-\d{2}-\d{2})\b")
 
@@ -67,9 +67,10 @@ def main(results: Path, mode: str = "auto", out: Path = typer.Option(None)):
             if not key.endswith(f":{mode}"):
                 continue
             sources = {c["marker"]: c for c in r["citations"]}
-            for sentence in _SENTENCE.findall(r["answer"]):
+            answer = re.sub(r"([.!?])((?: \[[GS]\d+\])+)", r"\2\1", r["answer"])   # "claim. [S1]" -> "claim [S1]."
+            for sentence in _SENTENCE.findall(answer):
                 sentence = sentence.strip()
-                for marker in _GRAPH.findall(sentence) + _SEARCH.findall(sentence):
+                for marker in _GRAPH.findall(sentence) + [a or b for a, b in _SEARCH.findall(sentence)]:
                     totals["claims"] += 1
                     src = sources.get(marker)
                     if src is None:

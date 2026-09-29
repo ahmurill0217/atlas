@@ -47,7 +47,19 @@ def test_nobody_linked_falls_back_to_content_and_says_so(monkeypatch):
     monkeypatch.setattr(router, "brain_answer", _brain)
     out = router.ask("How did the Bishop's Corner buyout go?", settings=object())
     assert out["route"] == "content" and out["fallback"].startswith("nobody the question names")
-    assert out["answer"].startswith("_Note: Answered from email search only:")
+    assert out["answer"] == "They discussed ICE [[1]]()."          # a search answer, no graph notes
+
+
+def test_a_relationship_question_about_unknown_people_says_so(monkeypatch):
+    ctx = _ctx(False)
+    ctx.unknown = ['No one called "Zed" is in the relationship graph.']
+    monkeypatch.setattr(router, "understand", _read(router.Route.RELATIONSHIP))
+    monkeypatch.setattr(router, "graph_context", lambda s, q, **kw: ctx)
+    monkeypatch.setattr(router, "graph_answer", _never)
+    monkeypatch.setattr(router, "brain_answer", _brain)
+    out = router.ask("When did I last email Zed?", settings=object())
+    assert out["answer"].startswith('_Note: No one called "Zed" is in the relationship graph._\n'
+                                    "_Note: Answered from search: nobody the question names")
 
 
 def test_graph_that_cannot_answer_falls_back_to_content(monkeypatch):

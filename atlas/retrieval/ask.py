@@ -59,8 +59,10 @@ class GraphContext:
     facts: str = ""
     # Emails that show the facts, cited as [G1], [G2], ...: marker -> document id, title, date.
     sources: dict[str, dict] = field(default_factory=dict)
-    # For the reader: assumptions made in linking a mention, and mentions nobody in the graph matches.
+    # For the reader: assumptions made in linking a mention ("Took "Sarah" to mean ...").
     notes: list[str] = field(default_factory=list)
+    # Mentions nobody in the graph matches; worth saying only when the answer needed the graph.
+    unknown: list[str] = field(default_factory=list)
     # Mentions with several close candidates: {"mention", "type", "candidates": [...]}. Non-empty
     # means ask the user which one they mean; no facts are built.
     ambiguous: list[dict] = field(default_factory=list)
@@ -242,7 +244,7 @@ def _choose(s: Session, ctx: GraphContext, mention: str, rows: list, partial: bo
     kind = "Organization" if organizations else "Person"
     rows = list({r.id: r for r in rows if not asker or r.id != asker.id}.values())
     if not rows:
-        ctx.notes.append(f'No {"company" if organizations else "one"} called "{mention}" appears in the email metadata.')
+        ctx.unknown.append(f'No {"company" if organizations else "one"} called "{mention}" is in the relationship graph.')
         return None
     scores = _affinity(s, [r.id for r in rows], asker.id if asker else None, organizations)
     rows.sort(key=lambda r: -scores.get(r.id, 0))

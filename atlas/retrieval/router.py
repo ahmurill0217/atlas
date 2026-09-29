@@ -21,7 +21,9 @@ linking ("Sarah" -> Sarah Chen) are stated at the top of the answer.
 
 Fallbacks (auto mode): a relationship or mixed question in which nobody could be
 linked, and a relationship question the graph's facts do not answer, are answered
-by content instead, and the answer says so.
+by content instead. For a relationship question the answer says so, and names the
+people or companies the graph does not know; for a mixed one the search answer
+stands alone (as for any content question), with `fallback` set in the result.
 """
 
 from __future__ import annotations
@@ -230,7 +232,7 @@ def ask(question: str, mode: str = "auto", settings: Settings | None = None, ask
     else:
         named = [e for e in ctx.entities if e.matched != ASKER]
         if mode == "auto" and ((route is Route.MIXED and not named) or (route is Route.RELATIONSHIP and not ctx.entities)):
-            fallback, route = "nobody the question names was found in the email metadata", Route.CONTENT
+            fallback, route = "nobody the question names is in the relationship graph", Route.CONTENT
         if route is Route.RELATIONSHIP:
             graph = graph_answer(question, ctx, settings)
             if graph.answered or mode != "auto":
@@ -245,12 +247,13 @@ def ask(question: str, mode: str = "auto", settings: Settings | None = None, ask
             result["answer"] = compose_mixed(result["graph_part"], result["error"] or result["answer"])
             result["citations"] = graph_citations(result["graph_part"], ctx) + result["citations"]
             result["error"] = None
-        notes = ctx.notes + ([f"Answered from email search only: {fallback}."] if fallback else [])
+        needed_graph = (reading.route if mode == "auto" else route) is Route.RELATIONSHIP
+        notes = ctx.notes + (ctx.unknown + [f"Answered from search: {fallback}."] if needed_graph and fallback else [])
         if notes and result["answer"]:
             result["answer"] = "\n".join(f"_Note: {n}_" for n in notes) + "\n\n" + result["answer"]
 
     return {"question": question, "mode": mode, "route": getattr(route, "value", route),
             "route_reason": reading.reason if reading and mode == "auto" else None, "fallback": fallback,
             "entities": [{"name": e.name, "type": e.entity_type, "matched": e.matched} for e in ctx.entities],
-            "notes": ctx.notes, "clarify": ctx.ambiguous, "facts": ctx.facts, **result,
+            "notes": ctx.notes, "unknown": ctx.unknown, "clarify": ctx.ambiguous, "facts": ctx.facts, **result,
             "graph_ms": round(graph_ms), "seconds": round(time.perf_counter() - t0, 1)}

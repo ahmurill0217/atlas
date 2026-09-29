@@ -33,23 +33,21 @@ Atlas (Postgres, schema kg)                         brain (../brain; OpenSearch 
 
 ## Answering (`atlas ask`, `atlas/retrieval/`)
 
-1. **`router.py`** reads the question in one small model call: the route, plus the people and companies it names as written ("Sarah", "Tom from Alloy", "BofA" -> Bank of America).
-2. **`ask.py`** links them to the graph.
-   - Exact full names, aliases, emails and domain labels link directly.
-   - First names and partial names get candidates, ranked by how much the asker has emailed each. A clear leader is linked, and the answer states the assumption.
-   - Close candidates are not guessed: `ask` returns route `clarify` with the candidates, and the caller asks the user ("Do you mean Sarah Chen at acme.com?").
-   - The asker (`--as`) resolves I / we / you.
-3. **`ask.py`** builds facts about them from the graph:
-   - profiles and correspondents;
-   - pair facts (who wrote to whom, when);
-   - who at a company someone dealt with.
+A model calls tools and writes the answer; a verifier checks it. This replaced a router that classified each question and filled fixed fact templates (`router.py`, kept as the `auto` baseline). The router was right that counts and dates must come from the graph, never from a search sample. It failed because the templates only understood email (meetings were invisible), and because nothing checked citations.
 
-   Each fact carries a `[G#]` marker naming an email that shows it.
-4. **`router.py`** answers by route:
-   - **relationship:** from the facts alone; cites `[G#]`.
-   - **content:** brain answers with the profile as context; cites the emails it retrieved.
-   - **mixed:** both. The two parts are not merged by a model, because a model overwrites the graph's exact numbers with guesses from the retrieved sample.
-   - **Fallbacks:** a mixed question with nobody linked, or a relationship question the facts don't answer, goes to content, and the answer says so.
+1. **Tools** (`tools.py`), a Python library a platform's own agent can register:
+   - `find`: a name, address or title to candidates of any type, ranked by the asker's interactions. Close candidates are flagged, so the model asks which one.
+   - `interactions`, `contacts`, `participants`: emails and meetings as one kind of thing, interactions. They are people in roles (sender, to/cc, invitee, speaker) at a time, exact over the whole graph, with time windows and a breakdown by person for a company.
+   - `search` (brain retrieval only), `read` (a whole document or transcript).
+   - Every record returned gets a ref (G#, S#) in the session's ledger. Only those refs can be cited.
+2. **The answer** is submitted as parts (one claim each) with refs, and exact quotes for text.
+3. **The verifier** (`verify.py`) checks each part mechanically:
+   - the refs exist;
+   - each quote appears in its passage;
+   - every number in the part appears in the cited evidence.
+
+   Failures go back to the model (up to 3 submissions); what still fails is removed from the answer and reported.
+4. **The loop** (`agent.py`) is the smallest runner of the above, used by the CLI and the evaluation. It retries transient API errors.
 
 ## What the evaluation showed (`docs/ask_evaluation.md`, Enron, 5,000 emails)
 

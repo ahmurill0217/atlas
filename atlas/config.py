@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     brain_model_server_port: int = 9100
     ask_provider: str = "openai"
     ask_model: str = "gpt-4o-mini"
+    agent_model: str = "gpt-5.5"          # the tool-using answer loop (atlas.retrieval.agent)
     openai_api_key: str | None = Field(default=None, validation_alias="OPENAI_API_KEY")
 
 

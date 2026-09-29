@@ -21,7 +21,7 @@ app = typer.Typer(add_completion=False)
 
 @app.command()
 def main(questions: Path, out: Path, only: str = typer.Option("", help="Comma-separated question ids"),
-         modes: str = typer.Option("auto,baseline", help="auto, relationship, content, baseline")):
+         modes: str = typer.Option("agent,auto", help="agent, auto, relationship, content, baseline")):
     qs = json.loads(questions.read_text())
     wanted = {q.strip() for q in only.split(",") if q.strip()}
     results = json.loads(out.read_text()) if out.exists() else {}
@@ -33,7 +33,11 @@ def main(questions: Path, out: Path, only: str = typer.Option("", help="Comma-se
             key = f"{q['id']}:{mode}"
             if key in results and not results[key].get("error"):
                 continue
-            r = run_ask(q["question"], mode=mode, asker=q.get("as"))
+            try:
+                r = run_ask(q["question"], mode=mode, asker=q.get("as"))
+            except Exception as exc:                  # one failed question must not end the run
+                typer.echo(f"{key:14s} FAILED {type(exc).__name__}: {exc}")
+                continue
             results[key] = {**r, "id": q["id"], "type": q["type"], "key_points": q["key_points"]}
             out.write_text(json.dumps(results, indent=1, default=str))
             typer.echo(f"{key:14s} route={r['route']:12s} cited={len(r['citations']):2d} "
