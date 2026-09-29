@@ -54,6 +54,32 @@ Answering (submit_answer):
 Today is {today}. {asker}"""
 
 
+def _fit(result: dict, limit: int = _RESULT_LIMIT) -> str:
+    """A tool result as valid JSON of at most about `limit` characters. Whole items come off
+    the end of the longest list (the lowest-ranked passages or oldest records) and the result
+    says how many, so the model knows to narrow the query instead of reading broken JSON."""
+    text = json.dumps(result, default=str)
+    if len(text) <= limit:
+        return text
+    result, dropped = dict(result), 0
+    while len(text) > limit:
+        lists = [k for k, v in result.items() if isinstance(v, list) and v]
+        if not lists:
+            break
+        longest = max(lists, key=lambda k: len(json.dumps(result[k], default=str)))
+        result[longest] = result[longest][:-1]
+        dropped += 1
+        result |= {"truncated": True,
+                   "note": f"{dropped} items left out to fit; narrow the query or lower the limit to see the rest"}
+        text = json.dumps(result, default=str)
+    if len(text) > limit:                           # no list left to trim: keep the short fields only
+        text = json.dumps({**{k: v for k, v in result.items() if isinstance(v, (int, float, bool)) or
+                              (isinstance(v, str) and len(v) <= 200)},
+                           "truncated": True, "note": "the result was too large to show; narrow the query"},
+                          default=str)
+    return text
+
+
 def _client(settings: Settings):
     from openai import OpenAI
 
@@ -111,8 +137,7 @@ def answer(question: str, settings: Settings | None = None, asker: str | None = 
                 else:
                     result = tools.call(call.function.name, args)
                     trace.append({"tool": call.function.name, "args": args})
-                messages.append({"role": "tool", "tool_call_id": call.id,
-                                 "content": json.dumps(result, default=str)[:_RESULT_LIMIT]})
+                messages.append({"role": "tool", "tool_call_id": call.id, "content": _fit(result)})
             if final:
                 break
         out = {"question": question, "mode": "agent", "route": "agent", "route_reason": None, "error": None,

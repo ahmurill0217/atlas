@@ -18,10 +18,14 @@ A platform's own agent loop registers `AtlasTools.schemas` and routes calls to
 from __future__ import annotations
 
 import json
+import logging
+import re
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from atlas.config import Settings
@@ -44,6 +48,21 @@ _EVENTS = """events AS (
     FROM kg.entities d WHERE d.entity_type IN ('Document', 'Meeting') AND d.status = 'active')"""
 _RECIPIENT = {"to", "cc", "bcc"}
 _TEXT_LIMIT = 12000
+_YEAR_MONTH = re.compile(r"^\d{4}-\d{2}$")
+
+log = logging.getLogger(__name__)
+
+
+def _day(name: str, value: str | None) -> str | None:
+    """A model-given since/until as YYYY-MM-DD. Event dates are ISO text and are compared as
+    text, so anything else ("May 2001", "2001-5-1") would filter the wrong rows silently."""
+    if value is None or not value.strip():
+        return None
+    value = value.strip()
+    try:
+        return datetime.fromisoformat(value + "-01" if _YEAR_MONTH.match(value) else value).date().isoformat()
+    except ValueError:
+        raise ValueError(f"{name} must be an ISO date like 2001-05-01, not {value!r}") from None
 
 
 @dataclass
@@ -135,6 +154,11 @@ class AtlasTools:
         except (ValueError, KeyError, TypeError) as exc:
             self.s.rollback()
             return {"error": str(exc)}
+        except SQLAlchemyError as exc:                  # a failed query costs this call, not the answer
+            self.s.rollback()
+            log.warning("tool %s failed: %s", name, exc)
+            reason = str(getattr(exc, "orig", None) or exc).strip().splitlines()[0][:300]
+            return {"error": f"the query failed: {reason}"}
 
     # ---- graph -------------------------------------------------------------------------------
 
@@ -243,6 +267,7 @@ class AtlasTools:
 
     def interactions(self, entity: str, other: str | None = None, kind: str = "any", since: str | None = None,
                      until: str | None = None, limit: int = 15) -> dict:
+        since, until = _day("since", since), _day("until", until)
         a, b = self._people(entity), self._people(other) if other else None
         rows = self._events(a, b, kind, since, until)
         name_a = self._entity(entity).canonical_name
@@ -307,6 +332,7 @@ class AtlasTools:
 
     def contacts(self, entity: str, kind: str = "any", since: str | None = None, until: str | None = None,
                  scope: str = "all", limit: int = 10) -> dict:
+        since, until = _day("since", since), _day("until", until)
         a = self._people(entity)
         where = ["e.at >= :floor"]
         params = {"a": a, "floor": EARLIEST_PLAUSIBLE_DATE.isoformat(), "lim": max(1, min(limit, 30)) * 3}
