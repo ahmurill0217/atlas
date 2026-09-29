@@ -1,0 +1,70 @@
+[
+ {
+  "id": "gm-rel-001", "source": "gmail", "type": "relationship", "as": "mike.rodriguez@northwind.io",
+  "question": "How many emails has Sarah Chen sent me, and when was the last one?",
+  "expect": {"facts": [["2", "two"], "2026-09-03"], "tools": ["interactions"]},
+  "key_points": ["2 emails from Sarah Chen to Mike Rodriguez; last 2026-09-03 (Re: Atlas Rollout)"],
+  "notes": "Counts and dates must come from the graph, so interactions is required."
+ },
+ {
+  "id": "gm-con-001", "source": "gmail", "type": "content", "as": "mike.rodriguez@northwind.io",
+  "question": "What time did Sarah confirm for the Atlas meeting?",
+  "expect": {"facts": [["10am", "10 am", "10:00"]], "documents": ["Re: Atlas Rollout"]},
+  "key_points": ["Tuesday 10am, in Sarah Chen's reply of 2026-09-03"]
+ },
+ {
+  "id": "gm-con-002", "source": "gmail", "type": "content", "as": "mike.rodriguez@northwind.io",
+  "question": "Who reached out about the Atlas data migration?",
+  "expect": {"facts": ["Dana Lee"], "documents": ["Intro: consultant for the Atlas data migration"]},
+  "key_points": ["Dana Lee (dana.lee@gmail.com), a consultant introduced by a mutual contact, 2026-09-04"]
+ },
+ {
+  "id": "dr-con-001", "source": "drive", "type": "content",
+  "question": "When is the Atlas pilot supposed to go live?",
+  "expect": {"facts": ["2026-11-30"], "documents": ["Atlas pilot plan", "Statement of Work: Atlas Rollout"],
+             "documents_match": "any"},
+  "key_points": ["Pilot go-live 2026-11-30 (pilot plan milestone table; SOW: live by November 30, 2026)"]
+ },
+ {
+  "id": "dr-con-002", "source": "drive", "type": "content",
+  "question": "What is the contract value for the Atlas pilot?",
+  "expect": {"facts": [["120,000", "120k"]], "absent": ["150,000"], "documents": ["Statement of Work: Atlas Rollout"]},
+  "key_points": ["USD 120,000 for the pilot phase (SOW, Commercials)"],
+  "notes": "Word document; the figure is in running text."
+ },
+ {
+  "id": "dr-con-003", "source": "drive", "type": "content",
+  "question": "How long can Atlas keep meeting transcripts?",
+  "expect": {"facts": ["90 days"], "documents": ["Atlas Security Review"]},
+  "key_points": ["No more than 90 days (Security Review finding 2)"],
+  "notes": "PDF."
+ },
+ {
+  "id": "fa-con-001", "source": "fathom", "type": "content",
+  "question": "What did Tom say was the main blocker at the Atlas kickoff?",
+  "expect": {"facts": ["security review"], "documents": ["Atlas rollout kickoff"]},
+  "key_points": ["Tom Becker (speaker label \"Tom (Acme)\"): security review is the main blocker on Acme's side"],
+  "notes": "The speaker label is not his calendar name, so this tests speaker-to-person linking."
+ },
+ {
+  "id": "fa-rel-001", "source": "fathom", "type": "relationship",
+  "question": "Who was invited to the Atlas rollout kickoff?",
+  "expect": {"facts": ["Sarah Chen", "Tom Becker", "Mike Rodriguez", "Priya Shah"], "tools": ["participants"]},
+  "key_points": ["Sarah Chen, Tom Becker (Acme); Mike Rodriguez, Priya Shah (Northwind); Priya did not speak"]
+ },
+ {
+  "id": "mx-001", "source": "mixed", "type": "mixed", "as": "mike.rodriguez@northwind.io",
+  "question": "Prep me for a call with Sarah Chen.",
+  "expect": {"facts": ["Acme", ["November", "2026-11-30"]], "tools": ["interactions"],
+             "documents": ["Atlas rollout kickoff", "Atlas pilot plan", "Re: Atlas Rollout", "Statement of Work: Atlas Rollout"],
+             "documents_match": "any"},
+  "key_points": ["graph: Acme Corp; 2 emails to Mike, both 2026-09; in the kickoff (2026-09-08) and follow-up meetings",
+                 "content: wants the Boston pilot live by November; security review is the blocker; confirmed Tuesday 10am"]
+ },
+ {
+  "id": "un-001", "source": "mixed", "type": "unanswerable",
+  "question": "What is Acme's annual IT budget?",
+  "expect": {"unanswerable": true, "absent": ["120,000"]},
+  "key_points": ["Not in the sources; the USD 120,000 contract value is not an IT budget"]
+ }
+]
