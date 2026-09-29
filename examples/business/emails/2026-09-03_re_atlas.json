@@ -1,0 +1,12 @@
+{
+  "source_system": "gmail",
+  "message_id": "<CA+atlas-0002@mail.acme.com>",
+  "thread_id": "thread-atlas-001",
+  "subject": "Re: Atlas Rollout",
+  "from": {"name": "Sarah Chen", "email": "Sarah.Chen@ACME.com"},
+  "to": [{"name": "Mike Rodriguez", "email": "mike.rodriguez@northwind.io"}],
+  "cc": [],
+  "date": "Thu, 03 Sep 2026 09:15:00 -0700",
+  "body": "Sarah emailed Mike regarding Atlas. Tuesday 10am works for us.\n\nOn Tue, Sep 1, 2026 at 8:02 AM Sarah Chen <sarah.chen@acme.com> wrote:\n> Sarah Chen from Acme Corp wants to meet next Tuesday about the Atlas rollout.\n> Mike Rodriguez will own the implementation on our side.",
+  "attachments": [{"filename": "atlas_scope.pdf", "mime_type": "application/pdf"}]
+}

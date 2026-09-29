@@ -1,4 +1,14 @@
-# brain: a small, testable knowledge graph on Postgres + pgvector
+# Atlas: a knowledge graph on Postgres + pgvector
+
+> **V1 (current direction):** `atlas/` is a deterministic business knowledge graph compiler driven by a versioned
+> ontology (`ontology/v1_0/`). Extractors only propose; the compiler decides, and every edge carries evidence. See
+> [docs/atlas_v1.md](docs/atlas_v1.md). Quick start:
+> `uv run alembic upgrade head && uv run python -m atlas ingest examples/business && uv run python -m atlas edges`.
+>
+> The rest of this README describes the **prototype** (`brain/`, tag `prototype-v0`): LLM extraction with
+> deterministic resolution, plus the evaluation harnesses we used to decide on V1.
+
+## Prototype: brain
 
 The pipeline turns documents into a knowledge graph:
 

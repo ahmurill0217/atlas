@@ -1,0 +1,33 @@
+{
+  "source_system": "fathom",
+  "title": "Atlas rollout kickoff",
+  "meeting_title": "Atlas rollout kickoff",
+  "recording_id": 120045,
+  "url": "https://fathom.video/calls/120045",
+  "share_url": "https://fathom.video/share/abc120045",
+  "created_at": "2026-09-08T18:05:00Z",
+  "scheduled_start_time": "2026-09-08T17:00:00Z",
+  "scheduled_end_time": "2026-09-08T17:45:00Z",
+  "recording_start_time": "2026-09-08T17:01:10Z",
+  "recording_end_time": "2026-09-08T17:44:02Z",
+  "calendar_invitees_domains_type": "one_or_more_external",
+  "calendar_invitees": [
+    {"name": "Sarah Chen", "email": "sarah.chen@acme.com", "email_domain": "acme.com", "is_external": true, "matched_speaker_display_name": "Sarah Chen"},
+    {"name": "Tom Becker", "email": "tom.becker@acme.com", "email_domain": "acme.com", "is_external": true, "matched_speaker_display_name": "Tom (Acme)"},
+    {"name": "Mike Rodriguez", "email": "mike.rodriguez@northwind.io", "email_domain": "northwind.io", "is_external": false, "matched_speaker_display_name": "Mike Rodriguez"},
+    {"name": "Priya Shah", "email": "priya.shah@northwind.io", "email_domain": "northwind.io", "is_external": false, "matched_speaker_display_name": null}
+  ],
+  "recorded_by": {"name": "Mike Rodriguez", "email": "mike.rodriguez@northwind.io", "email_domain": "northwind.io", "team": "AI Platform"},
+  "transcript": [
+    {"speaker": {"display_name": "Mike Rodriguez", "matched_calendar_invitee_email": "mike.rodriguez@northwind.io"}, "text": "Thanks for joining. Today we scope the Atlas rollout.", "timestamp": "00:00:12"},
+    {"speaker": {"display_name": "Sarah Chen", "matched_calendar_invitee_email": "sarah.chen@acme.com"}, "text": "We need the pilot live for the Boston team by November.", "timestamp": "00:01:40"},
+    {"speaker": {"display_name": "Tom (Acme)", "matched_calendar_invitee_email": null}, "text": "Security review is the main blocker on our side.", "timestamp": "00:03:05"},
+    {"speaker": {"display_name": "Mike Rodriguez", "matched_calendar_invitee_email": "mike.rodriguez@northwind.io"}, "text": "I will own the implementation plan and send it Friday.", "timestamp": "00:05:22"}
+  ],
+  "default_summary": {"template_name": "general", "markdown_formatted": "## Atlas rollout kickoff\n- Acme wants a pilot live for the Boston team by November.\n- Security review is the main blocker.\n- Mike owns the implementation plan."},
+  "action_items": [
+    {"description": "Send the Atlas implementation plan", "user_generated": false, "completed": false, "recording_timestamp": "00:05:22", "recording_playback_url": "https://fathom.video/calls/120045?t=322", "assignee": {"name": "Mike Rodriguez", "email": "mike.rodriguez@northwind.io", "team": "AI Platform"}},
+    {"description": "Share security questionnaire", "user_generated": false, "completed": false, "recording_timestamp": "00:03:05", "recording_playback_url": "https://fathom.video/calls/120045?t=185", "assignee": {"name": "Tom Becker", "email": "tom.becker@acme.com", "team": null}}
+  ],
+  "crm_matches": null
+}

@@ -1,0 +1,12 @@
+{
+  "source_system": "gmail",
+  "message_id": "<CA+atlas-0001@mail.acme.com>",
+  "thread_id": "thread-atlas-001",
+  "subject": "Atlas Rollout",
+  "from": "Sarah Chen <sarah.chen@acme.com>",
+  "to": ["Mike Rodriguez <mike.rodriguez@northwind.io>"],
+  "cc": ["Priya Shah <priya.shah@northwind.io>"],
+  "date": "2026-09-01T15:02:00Z",
+  "body": "Sarah Chen from Acme Corp wants to meet next Tuesday about the Atlas rollout.\n\nMike Rodriguez will own the implementation on our side.\n\nSarah and Mike will meet with the AI Platform team.",
+  "attachments": []
+}

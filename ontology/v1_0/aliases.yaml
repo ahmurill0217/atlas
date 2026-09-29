@@ -1,0 +1,61 @@
+# Ontology V1.0 — Aliases. Language variation, NOT schema variation.
+# An extractor's suggested type/relation is looked up here (after exact
+# canonical names). Anything not listed resolves to UNRESOLVED -> review.
+version: "1.0"
+
+entity_types:
+  person: {type: Person}
+  people: {type: Person}
+  employee: {type: Person}
+  contact: {type: Person}
+  individual: {type: Person}
+  company: {type: Organization}
+  organization: {type: Organization}
+  organisation: {type: Organization}
+  firm: {type: Organization}
+  business: {type: Organization}
+  customer: {type: Organization, role: Customer}
+  customer company: {type: Organization, role: Customer}
+  client: {type: Organization, role: Customer}
+  vendor: {type: Organization, role: Vendor}
+  supplier: {type: Organization, role: Vendor}
+  document: {type: Document}
+  email: {type: Document}
+  file: {type: Document}
+  memo: {type: Document}
+  report: {type: Document}
+  project: {type: Project}
+  event: {type: Event}
+  location: {type: Location}
+  office: {type: Location}
+  team: {type: Team}
+  department: {type: Team}
+  meeting: {type: Meeting}
+  call: {type: Meeting}
+  product: {type: Product}
+  offering: {type: Product}
+  contract: {type: Contract}
+  agreement: {type: Contract}
+  initiative: {type: Initiative}
+  program: {type: Initiative}
+  opportunity: {type: Opportunity}
+  deal: {type: Opportunity}
+
+relations:
+  WORKS_AT: [works at, works for, employed by, employee of]
+  MEMBER_OF: [member of, on the team, belongs to]
+  MANAGES: [manages, manager of, supervises]
+  REPORTS_TO: [reports to]
+  ATTENDED: [attended, joined, was present at]
+  HAS_PARTICIPANT: [has participant, invited, invitee]
+  ORGANIZED_BY: [organized by, hosted by, scheduled by]
+  AUTHORED_BY: [authored by, written by, sent by, created by]
+  MENTIONS: [mentions, refers to]
+  WORKS_ON: [works on, working on, contributes to]
+  OWNS_PROJECT: [owns, owner of, leads, accountable for, responsible for, project owner]
+  ABOUT: [about, regarding, concerns]
+  CUSTOMER_OF: [customer of, client of, buys from]
+  VENDOR_OF: [vendor of, supplier to, supplies]
+  PART_OF: [part of, belongs to initiative]
+  BETWEEN: [between, signed by, party to]
+  USES_PRODUCT: [uses, uses product, is using]

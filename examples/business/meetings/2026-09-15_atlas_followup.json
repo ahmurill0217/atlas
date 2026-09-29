@@ -1,0 +1,25 @@
+{
+  "source_system": "fathom",
+  "title": "Atlas follow-up",
+  "meeting_title": "Atlas follow-up",
+  "recording_id": 120311,
+  "url": "https://fathom.video/calls/120311",
+  "share_url": "https://fathom.video/share/abc120311",
+  "scheduled_start_time": "2026-09-15T16:00:00Z",
+  "scheduled_end_time": "2026-09-15T16:30:00Z",
+  "recording_start_time": "2026-09-15T16:02:00Z",
+  "recording_end_time": "2026-09-15T16:29:00Z",
+  "calendar_invitees_domains_type": "one_or_more_external",
+  "calendar_invitees": [
+    {"name": "Sarah Chen", "email": null, "email_domain": null, "is_external": true, "matched_speaker_display_name": null},
+    {"name": "Mike Rodriguez", "email": "mike.rodriguez@northwind.io", "email_domain": "northwind.io", "is_external": false, "matched_speaker_display_name": "Mike Rodriguez"}
+  ],
+  "recorded_by": {"name": "Mike Rodriguez", "email": "mike.rodriguez@northwind.io", "email_domain": "northwind.io", "team": "AI Platform"},
+  "transcript": [
+    {"speaker": {"display_name": "Mike Rodriguez", "matched_calendar_invitee_email": "mike.rodriguez@northwind.io"}, "text": "Quick check-in on the Atlas plan.", "timestamp": "00:00:05"},
+    {"speaker": {"display_name": "Guest 1", "matched_calendar_invitee_email": null}, "text": "Joining from the Acme office, thanks.", "timestamp": "00:00:20"}
+  ],
+  "default_summary": {"template_name": "general", "markdown_formatted": "Short check-in on the Atlas implementation plan."},
+  "action_items": [],
+  "crm_matches": null
+}
