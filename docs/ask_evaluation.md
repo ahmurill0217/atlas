@@ -51,3 +51,31 @@
 
 - **The metadata-only graph plus text search answered most questions well in both modes.** For this corpus size, "metadata graph + vectors" looks sufficient for who / what-was-said questions. The graph's value is identity (one person across addresses, names in headers) and profiles, more than narrowing the search.
 - **Infrastructure:** indexing ran at about 3 emails/s on CPU (Docker on Mac), and OpenSearch crash-looped under memory pressure until the Onyx stack was stopped. brain retried failed documents correctly.
+
+## Round 2: the three fixes (same day)
+
+**Changes:**
+- **Conservative linking:** a person needs a full name, alias or email address. A single word never links a person.
+- **Boost instead of filter:** `GraphBoostedSearcher` runs each query over the whole index and over the entities' emails, then fuses the two rankings. It's opt-in with `--boost`.
+- **Profile-only mode ("facts"):** the metadata profile goes in the prompt and the search is left alone. This is now the default for `atlas ask`.
+
+The baseline answers were reused from round 1. Raw answers are in `runs/enron/ask/results_v2.json`.
+
+| Mode vs baseline | Better | Tie | Worse |
+|---|---|---|---|
+| Round 1: hard filter + loose linking | 1 | 9 | 5 |
+| Round 2: boost + conservative linking | 0 | 12 | 3 (p4, d2, d5) |
+| Round 2: profile only | 0 | 15 | 0 |
+
+- **Conservative linking fixed the wrong-person answers:** c5 no longer says "Doug Jacques", and d2 no longer links "Scrimale Bob".
+- **The boost still loses emails *about* a person** (p4 Zipper thread) **and one-way first contacts:**
+  - The UBS muni-bond proposal came from a salesperson Phillip never replied to, so the broadcast rule left it out of the boosted set.
+  - The `painewebber.com` company profile pointed the model at a different contact.
+- **Profile only matches plain retrieval on every question.** It also adds correct identity: all addresses, employer, active period and top correspondents.
+
+**Caveat:** run-to-run LLM variance is about the size of these differences. d1 and c5 link nobody, so "profile only" *is* plain retrieval there, yet the two runs cited different emails. Fifteen questions can show large effects, not small ones.
+
+## Conclusion for this corpus
+
+- **Default:** brain retrieval over emails whose headers carry graph-resolved names, plus the graph profile of the people named. The graph earns its place through identity resolution and profiles, not by narrowing search.
+- **Not yet tested:** questions only the graph can answer well, where search should struggle. For example: who at Bank of America have we dealt with; when did we last talk to X; who introduced us; everyone on the Bishop's Corner deal. The next question set should cover those. So should a larger corpus, where names in the text stop being enough to find the right emails.

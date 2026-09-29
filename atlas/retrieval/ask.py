@@ -1,16 +1,21 @@
-"""`atlas ask`: the graph narrows, brain retrieves and answers.
+"""`atlas ask`: brain retrieves and answers; the graph profiles (and can boost).
 
-  1. link   people / organizations named in the question to graph entities
-            (full name or alias, email, a unique capitalized last name, a
-            capitalized company name matching a domain label)
-  2. scope  the documents those entities appear on (AUTHORED_BY / SENT_TO; for an
+  1. link   people / organizations named in the question to graph entities.
+            Conservative: a person needs a full name, alias or email address (a
+            single word like "Bob" never links a person); a capitalized word may
+            link a company whose domain label it is. Uncertain -> no link.
+  2. boost  (opt-in, `--boost`) the documents those entities appear on (AUTHORED_BY / SENT_TO; for an
             external organization, the documents of its people). Several people:
             the documents they share, else all of theirs. Internal organizations
-            do not narrow: every document involves them.
+            add nothing: every document involves them. The boost ranks these
+            documents first; it never hides the rest. Evaluation 2026-09-29: a hard
+            filter lost threads *about* a person that they were not on; the boost
+            still crowded them out; the profile alone matched plain retrieval and
+            added identity, so the profile without boost is the default.
   3. facts  a short metadata profile per entity: addresses, employer, volume,
             active period, frequent correspondents, recent subjects
-  4. answer brain searches only inside the scope and answers with citations; the
-            facts ride in the system prompt, labelled as metadata
+  4. answer brain searches the whole index with the boost and answers with
+            citations; the facts ride in the system prompt, labelled as metadata
 
 With `use_graph=False` the question goes to brain unfiltered and without facts,
 which is the baseline the graph has to beat.
@@ -29,7 +34,7 @@ from atlas.ingestion.normalized import EARLIEST_PLAUSIBLE_DATE
 from atlas.resolution.normalize import normalize_email, normalize_name
 
 MAX_SCOPE = 20_000
-_WORD = re.compile(r"[A-Za-z][A-Za-z'&.-]*|\S+@\S+")
+_WORD = re.compile(r"[^\s,;<>()]+@[^\s,;<>()]+|[A-Za-z][A-Za-z'&.-]*")
 _STOP = {"the", "and", "for", "with", "about", "what", "who", "how", "did", "does", "our", "we", "me", "my",
          "you", "your", "prep", "call", "deal", "know", "tell", "when", "where", "which", "why", "all",
          "any", "this", "that", "from", "into", "over", "been", "have", "has", "was", "were", "are", "is"}
@@ -87,14 +92,11 @@ def link_entities(s: Session, question: str) -> list[LinkedEntity]:
                 WHERE e.status = 'active' AND e.entity_type IN ('Person', 'Organization')
                   AND (e.normalized_name = :k OR a.normalized_alias = :k)"""), {"k": key}).all()
         elif capitalized and len(key) >= 3:
-            # One capitalized word: a unique last name, or a company whose domain label it is.
+            # One capitalized word never names a person ("Bob", "Jacques" are too
+            # ambiguous); it may name a company whose domain label it is.
             rows = s.execute(text("""SELECT e.id, e.entity_type, e.canonical_name, e.properties FROM kg.entities e
-                WHERE e.status = 'active' AND e.entity_type = 'Person' AND lower(e.properties->>'last_name') = :k"""),
-                             {"k": key}).all()
-            if len(rows) != 1:
-                rows = s.execute(text("""SELECT e.id, e.entity_type, e.canonical_name, e.properties FROM kg.entities e
-                    JOIN kg.entity_external_ids x ON x.entity_id = e.id AND x.identifier_type = 'domain'
-                    WHERE e.status = 'active' AND split_part(x.value, '.', 1) = :k"""), {"k": key}).all()
+                JOIN kg.entity_external_ids x ON x.entity_id = e.id AND x.identifier_type = 'domain'
+                WHERE e.status = 'active' AND split_part(x.value, '.', 1) = :k"""), {"k": key}).all()
         else:
             continue
         if len(rows) == 1:
@@ -233,6 +235,7 @@ and when, but say nothing about content; use the search results for what was sai
 def system_prompt(ctx: GraphContext) -> str:
     from brain.answer.prompts.chat_prompts import DEFAULT_SYSTEM_PROMPT
 
-    scope = (f"Search is restricted to the {len(ctx.document_ids)} documents involving the entities below."
-             if ctx.document_ids else "Search covers the whole corpus.")
+    scope = (f"Search covers every email; the {len(ctx.document_ids)} emails involving the entities below "
+             "rank first. Emails about a person that they are not on can matter too."
+             if ctx.document_ids else "Search covers every email.")
     return DEFAULT_SYSTEM_PROMPT + SYSTEM_SUFFIX.format(scope=scope, facts=ctx.facts or "(no entities recognized)")

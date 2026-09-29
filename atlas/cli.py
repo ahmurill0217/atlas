@@ -164,12 +164,12 @@ def index(force: bool = typer.Option(False, "--force", help="Re-embed documents 
     typer.echo(_dump(stats))
 
 
-def run_ask(question: str, use_graph: bool = True) -> dict:
-    """Answer one question; returns the answer, citations, scope and timings."""
+def run_ask(question: str, use_graph: bool = True, boost: bool = False) -> dict:
+    """Answer one question; returns the answer, citations, scope and timings.
+    use_graph adds the metadata profile; boost also ranks the entities' documents first."""
     import time
 
     from brain import AccessScope, AnswerOptions
-    from brain.models.search import SearchFilters
 
     from atlas.retrieval.ask import GraphContext, graph_context, system_prompt
     from atlas.retrieval.brain_bridge import build_brain
@@ -178,12 +178,13 @@ def run_ask(question: str, use_graph: bool = True) -> dict:
     t0 = time.perf_counter()
     with session_scope() as s:
         ctx = graph_context(s, question) if use_graph else GraphContext()
+    if not boost:
+        ctx.document_ids = []          # profile only: search is left untouched
     graph_ms = (time.perf_counter() - t0) * 1000
-    brain = build_brain(settings)
+    brain = build_brain(settings, boost_document_ids=ctx.document_ids)
     options = AnswerOptions(force_search=True, system_prompt=system_prompt(ctx) if use_graph else None)
-    filters = SearchFilters(document_ids=ctx.document_ids) if ctx.document_ids else None
     answer, cited, error, usage = [], [], None, None
-    for event in brain.answer(question, access=AccessScope(bypass=True), filters=filters, options=options):
+    for event in brain.answer(question, access=AccessScope(bypass=True), options=options):
         kind = getattr(event, "type", "")
         if kind == "answer_delta":
             answer.append(event.text)
@@ -191,7 +192,7 @@ def run_ask(question: str, use_graph: bool = True) -> dict:
             cited, usage = event.cited_documents, event.usage
         elif kind == "answer_error":
             error = event.message
-    return {"question": question, "mode": "graph" if use_graph else "baseline",
+    return {"question": question, "mode": ("graph" if boost else "facts") if use_graph else "baseline",
             "entities": [{"name": e.name, "type": e.entity_type, "matched": e.matched} for e in ctx.entities],
             "scope": ctx.scope, "scope_documents": len(ctx.document_ids), "facts": ctx.facts,
             "answer": "".join(answer), "error": error,
@@ -203,16 +204,19 @@ def run_ask(question: str, use_graph: bool = True) -> dict:
 
 @app.command()
 def ask(question: str,
-        no_graph: bool = typer.Option(False, "--no-graph", help="Baseline: plain retrieval, no graph scope or facts."),
+        no_graph: bool = typer.Option(False, "--no-graph", help="Plain retrieval: no graph profile."),
+        boost: bool = typer.Option(False, "--boost", help="Also rank the named entities' documents first."),
         as_json: bool = typer.Option(False, "--json")) -> None:
-    """Answer a question: the graph scopes and profiles, brain retrieves and cites."""
-    result = run_ask(question, use_graph=not no_graph)
+    """Answer a question: brain retrieves and cites; the graph adds a metadata profile of the people named."""
+    result = run_ask(question, use_graph=not no_graph, boost=boost)
     if as_json:
         typer.echo(_dump(result))
         return
     if result["entities"]:
         typer.echo("Entities: " + ", ".join(f"{e['name']} ({e['type']})" for e in result["entities"]))
-    typer.echo(f"Scope: {result['scope']}, {result['scope_documents'] or 'all'} documents\n")
+    if result["scope_documents"]:
+        typer.echo(f"Boosted: {result['scope_documents']} documents ({result['scope']})")
+    typer.echo()
     typer.echo(result["error"] or result["answer"])
     typer.echo("\nSources:")
     for i, c in enumerate(result["citations"], 1):
