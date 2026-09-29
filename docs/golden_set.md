@@ -81,3 +81,23 @@ A clarify example (needs two people named Sarah in the corpus):
 ## What the checks can't tell you
 
 The checks tell you whether the right facts, sources and tools are present. They can't tell you whether the answer is well organized, whether it adds unsupported claims (the verifier in `atlas/retrieval/verify.py` covers most of those), or whether a summary is complete. For those, hand-grade a sample of passing answers now and then, or add an LLM judge that you've checked against your own grades.
+
+## Trap corpus: persistent-knowledge-layer
+
+[persistent-knowledge-layer](https://github.com/mcekikj/persistent-knowledge-layer) (MIT) ships 21 made-up insurance documents written so that plain retrieval gives a confident wrong answer. They contain six traps: a rule that applies only in one scope, two current documents that contradict each other, several names for one concept, rules with effective dates, a rationale that exists only in an email, and questions that need several documents. `examples/qa/pkl_trap_questions.json` asks about each trap.
+
+```
+git clone https://github.com/mcekikj/persistent-knowledge-layer ../persistent-knowledge-layer
+uv run python scripts/pkl_to_atlas.py ../persistent-knowledge-layer runs/pkl/corpus
+
+# a separate database and index, so the trap corpus doesn't mix with real data
+export DATABASE_URL=postgresql+psycopg://brain:brain@localhost:5433/atlas_pkl ATLAS_BRAIN_INDEX=atlas_pkl
+uv run python -c "from atlas.db.admin import ensure_database, migrate; import os; \
+  ensure_database(os.environ['DATABASE_URL']); migrate(os.environ['DATABASE_URL'])"
+uv run atlas ingest runs/pkl/corpus
+uv run atlas index                     # the brain index (see the README)
+uv run python scripts/evaluate_ask.py examples/qa/pkl_trap_questions.json runs/pkl/results.json --modes agent --runs 3
+uv run python scripts/score_ask.py examples/qa/pkl_trap_questions.json runs/pkl/results.json
+```
+
+The corpus has names but no email addresses, so its graph is thin. Each email's sender and recipients are linked, but a second mention of a name-only person goes to the review queue instead of being merged. The run mostly tests search, the agent and the verifier. Two traps test behavior the checks can only partly see, so read those answers by hand: `pkl-conflict-001` (does it present both sides without choosing one?) and `pkl-scope-001` (is 15 years presented as the general rule?).

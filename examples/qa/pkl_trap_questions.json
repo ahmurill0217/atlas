@@ -1,0 +1,292 @@
+[
+ {
+  "id": "pkl-scope-001",
+  "source": "drive",
+  "type": "content",
+  "question": "At what roof age does Ostermere normally request a roof inspection at underwriting?",
+  "expect": {
+   "facts": [
+    "20",
+    "15",
+    "H3",
+    "new business"
+   ],
+   "documents": [
+    "Residential Roof Underwriting Guideline",
+    "High-Wind Zone Underwriting Update"
+   ]
+  },
+  "key_points": [
+   "More than 20 years generally (INS-SYN-003); more than 15 years only for new business in zone H3 (INS-SYN-004, from 2026-03-01)"
+  ],
+  "notes": "Trap 1, scoped supersession: 15 years reported as the general rule is wrong. The checks need both figures and the scope; a person should confirm 15 is not presented as universal."
+ },
+ {
+  "id": "pkl-scope-002",
+  "source": "drive",
+  "type": "content",
+  "question": "Does the 15-year roof inspection threshold apply to policies that were already in force before the zone model?",
+  "expect": {
+   "facts": [
+    "new business"
+   ],
+   "documents": [
+    "High-Wind Zone Underwriting Update",
+    "Re: Roof threshold for the new severe-wind zone"
+   ],
+   "documents_match": "any"
+  },
+  "key_points": [
+   "No: new business in zone H3 only; not retro-fitted to in-force policies (INS-SYN-004; Vasquez email, INS-SYN-018)"
+  ]
+ },
+ {
+  "id": "pkl-conflict-001",
+  "source": "drive",
+  "type": "content",
+  "question": "Is trace and access covered under Hearthmere?",
+  "expect": {
+   "facts": [
+    "5,000",
+    "endorsement",
+    "standard",
+    [
+     "unresolved",
+     "not resolved",
+     "conflict",
+     "conflicting",
+     "inconsistent",
+     "contradict"
+    ]
+   ],
+   "documents": [
+    "Hearthmere Endorsement Catalogue",
+    "Claims Handling Manual - Chapter 7 - Water Damage"
+   ]
+  },
+  "key_points": [
+   "Unresolved conflict (con-001): the Claims Handling Manual (INS-SYN-012) says covered as standard up to EUR 5,000; the Endorsement Catalogue (INS-SYN-008) says optional paid endorsement HS-TA-01 (EUR 5,000, EUR 24 premium). Both current. A correct answer presents both and does not pick one."
+  ],
+  "notes": "Trap 2, the load-bearing one. Picking either side fails the facts check. Also grade by hand: does it avoid choosing?"
+ },
+ {
+  "id": "pkl-conflict-002",
+  "source": "drive",
+  "type": "content",
+  "question": "Who is responsible for resolving the trace-and-access question, and what should claim handlers do until then?",
+  "expect": {
+   "facts": [
+    "Tanaka",
+    "refer"
+   ],
+   "documents": [
+    "Minutes - Claims AI Working Group"
+   ]
+  },
+  "key_points": [
+   "Y. Tanaka (Product) is the accountable owner; handlers refer all trace-and-access questions and quote no figure (minutes of 2026-05-06)"
+  ]
+ },
+ {
+  "id": "pkl-terms-001",
+  "source": "gmail",
+  "type": "content",
+  "question": "Are cash settlement basis, actual cash value, depreciated value, ACV, depreciation holdback and recoverable depreciation six different things?",
+  "expect": {
+   "facts": [
+    [
+     "two",
+     "2"
+    ]
+   ],
+   "documents": [
+    "RE: Hearthmere - clarification on cash settlement basis"
+   ]
+  },
+  "key_points": [
+   "No, two things: cash settlement basis = actual cash value = depreciated value = ACV; depreciation holdback = recoverable depreciation (Broker Support reply, 2026-03-11)"
+  ],
+  "notes": "Trap 3, terminology drift."
+ },
+ {
+  "id": "pkl-date-001",
+  "source": "drive",
+  "type": "content",
+  "question": "For claim CLM-1108, did the 15-year H3 roof inspection threshold apply?",
+  "expect": {
+   "facts": [
+    "2026-02-20",
+    "2026-03-01"
+   ],
+   "documents": [
+    "Synthetic Claim Case Notes - CLM-1108",
+    "High-Wind Zone Underwriting Update"
+   ],
+   "documents_match": "any"
+  },
+  "key_points": [
+   "No: the loss was on 2026-02-20 and the H3 rule took effect on 2026-03-01 (and applies to new business; the policy was written 2025-09-14). The general 20-year rule applied, and the roof (about 17 at underwriting) was below it."
+  ],
+  "notes": "Trap 4, effective dates."
+ },
+ {
+  "id": "pkl-date-002",
+  "source": "drive",
+  "type": "content",
+  "question": "A Hearthmere building loss happened on 1 August 2025. Is depreciation recoverable on that claim?",
+  "expect": {
+   "facts": [
+    [
+     "1.1"
+    ],
+    [
+     "not recoverable",
+     "non-recoverable",
+     "not be recovered",
+     "no recoverable depreciation"
+    ]
+   ],
+   "documents": [
+    "Ostermere Hearthmere Policy Overview (v1.1 - SUPERSEDED)",
+    "RE: Hearthmere - clarification on cash settlement basis"
+   ],
+   "documents_match": "any"
+  },
+  "key_points": [
+   "No: v1.1 (in force to 2025-12-31) governs that loss, settling on ACV with depreciation not recoverable; v1.2 introduced recoverable depreciation from 2026-01-01"
+  ],
+  "notes": "Trap 4 in reverse: the superseded version is the right one for an older loss."
+ },
+ {
+  "id": "pkl-why-001",
+  "source": "gmail",
+  "type": "content",
+  "question": "Why is the H3 roof inspection threshold 15 years rather than 20?",
+  "expect": {
+   "facts": [
+    [
+     "3.4x",
+     "3.4 times",
+     "3.4"
+    ]
+   ],
+   "documents": [
+    "Re: Roof threshold for the new severe-wind zone"
+   ]
+  },
+  "key_points": [
+   "Between 15 and 20 years, covering displacement in the severe-wind band is about 3.4x the standard band at the same age (E. Vasquez email, 2026-01-22); below 15 the bands are similar"
+  ],
+  "notes": "Trap 5, rationale that lives only in an email."
+ },
+ {
+  "id": "pkl-hop-001",
+  "source": "drive",
+  "type": "content",
+  "question": "Why was CLM-1042 triaged at Level 1?",
+  "expect": {
+   "facts": [
+    "habitable",
+    "5,000"
+   ],
+   "documents": [
+    "Synthetic Claim Case Notes - CLM-1042",
+    "Synthetic Property Claim Triage Guideline"
+   ],
+   "documents_match": "any"
+  },
+  "key_points": [
+   "Property habitable, water source stopped, estimate EUR 3,800, below the EUR 5,000 Level 1 limit (claim notes INS-SYN-005; triage guideline INS-SYN-002)"
+  ],
+  "notes": "Trap 6, several documents."
+ },
+ {
+  "id": "pkl-hop-002",
+  "source": "drive",
+  "type": "content",
+  "question": "Why might CLM-1155 fall outside escape-of-water cover when CLM-1042 did not?",
+  "expect": {
+   "facts": [
+    "seepage",
+    "sudden"
+   ],
+   "documents": [
+    "Synthetic Claim Case Notes - CLM-1155"
+   ]
+  },
+  "key_points": [
+   "CLM-1155 shows continuous or repeated seepage (excluded under 4.2); CLM-1042 was a datable, sudden connector failure. CLM-1155's position is provisional; declining needs a claims professional."
+  ]
+ },
+ {
+  "id": "pkl-ai-001",
+  "source": "drive",
+  "type": "content",
+  "question": "Can the AI assistant assign a triage level or approve coverage on a claim?",
+  "expect": {
+   "facts": [
+    [
+     "provisional",
+     "suggest",
+     "propose"
+    ]
+   ],
+   "documents": [
+    "Synthetic Property Claim Triage Guideline"
+   ]
+  },
+  "key_points": [
+   "It may suggest a provisional triage level; it must not approve or deny coverage, determine fraud or replace emergency instructions (INS-SYN-002)"
+  ]
+ },
+ {
+  "id": "pkl-graph-001",
+  "source": "gmail",
+  "type": "relationship",
+  "question": "Who did E. Vasquez email about the roof threshold, and when?",
+  "expect": {
+   "facts": [
+    "Lindqvist",
+    "2026-01-22"
+   ],
+   "tools": [
+    "interactions"
+   ]
+  },
+  "key_points": [
+   "D. Lindqvist (cc M. Oyelaran), 2026-01-22; Lindqvist replied the same day"
+  ],
+  "notes": "The only graph question: the corpus has names but no email addresses."
+ },
+ {
+  "id": "pkl-open-001",
+  "source": "drive",
+  "type": "content",
+  "question": "How many in-force Hearthmere policies carry the HS-TA-01 endorsement?",
+  "expect": {
+   "facts": [
+    "Tanaka"
+   ],
+   "documents": [
+    "Minutes - Claims AI Working Group"
+   ]
+  },
+  "key_points": [
+   "Not known yet: establishing it is Y. Tanaka's open action (due 2026-05-20). Any number is invented."
+  ],
+  "notes": "The count is in no source. A good answer says so and points to the open action; a person should check that no number was invented."
+ },
+ {
+  "id": "pkl-none-001",
+  "source": "mixed",
+  "type": "unanswerable",
+  "question": "What is the policy excess on a Hearthmere escape-of-water claim?",
+  "expect": {
+   "unanswerable": true
+  },
+  "key_points": [
+   "Not in the sources: no document states an excess or deductible."
+  ],
+  "notes": "The strict check fails an answer that cites anything; read those by hand."
+ }
+]
