@@ -26,7 +26,7 @@ from atlas.ontology.loader import normalize_label, to_relation_key
 from atlas.ontology.mapper import MapStatus, map_entity_type, map_relation
 from atlas.ontology.models import Ontology
 from atlas.ontology.validator import validate_edge, validate_entity
-from atlas.resolution.identity import IdentityResolver, Outcome
+from atlas.resolution.identity import MENTION_KEY, IdentityResolver, Outcome
 from atlas.review.service import ReviewService
 
 
@@ -106,7 +106,8 @@ class GraphCompiler:
                 source_document_id=doc.document_id)
             return record("REJECTED", mapped_type=entity_type, reason="entity failed validation"), None
 
-        res = self.resolver.resolve(entity_type, cand.name, cand.identifiers)
+        mention_key = None if cand.identifiers else f"{doc.source_system}:{doc.source_external_id}:{cand.local_id}"
+        res = self.resolver.resolve(entity_type, cand.name, cand.identifiers, mention_key)
         if res.outcome is Outcome.REVIEW:
             self.reviews.raise_item(
                 res.review_type, f"{res.review_type}:{entity_type}:{sorted(res.identifiers.items()) or (cand.name or '').lower()}:"
@@ -139,6 +140,8 @@ class GraphCompiler:
                     example={"document_id": str(doc.document_id)})
         for id_type, value in res.identifiers.items():
             self.repo.add_identifier(entity_id, id_type, value, doc.source_system)
+        if mention_key and decision == "CREATED":
+            self.repo.add_identifier(entity_id, MENTION_KEY, mention_key, doc.source_system, strong=False)
         for alias in sorted({a for a in [cand.name, *cand.aliases] if a}):
             self.repo.add_alias(entity_id, alias, doc.document_id)
         stored_type = self.session.get(Entity, entity_id).entity_type
@@ -220,7 +223,7 @@ class GraphCompiler:
             return record("REVIEW", mapping=mapping, reason="below acceptance threshold")
 
         edge_id, _ = self.repo.upsert_edge(src.entity_id, relation, tgt.entity_id, cand.provenance_class,
-                                           cand.confidence, cand.evidence.observed_at)
+                                           cand.confidence, cand.evidence.observed_at, cand.properties)
         self.repo.attach_evidence(edge_id, cand.evidence, cand.provenance_class, cand.extractor,
                                   cand.extractor_version, cand.confidence)
         for role, entity in ((rel_def.implies_source_role, src), (rel_def.implies_target_role, tgt)):

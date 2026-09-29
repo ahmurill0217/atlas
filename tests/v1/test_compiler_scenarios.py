@@ -102,3 +102,14 @@ def test_role_is_a_facet_not_a_node(kg, ontology):
                  [edge(doc, vid, "acme", "nw", "CUSTOMER_OF", "Acme is a customer of Northwind")])
         orgs = {e.canonical_name: e for e in s.execute(select(Entity)).scalars()}
         assert len(orgs) == 2 and orgs["Acme Corp"].roles == ["Customer"]
+
+
+def test_reprocessing_a_name_only_mention_is_not_ambiguous(kg, ontology):
+    with Session(kg) as s:
+        doc, vid = make_doc(s, "guest")
+        assert _compile(s, ontology, doc, vid, [ent("g", "Person", "Guest 1")]).entities == {"g": "CREATED"}
+        _, vid2 = make_doc(s, "guest")          # same document, reprocessed (new version)
+        assert _compile(s, ontology, doc, vid2, [ent("g", "Person", "Guest 1")]).entities == {"g": "MATCHED"}
+        other, vid3 = make_doc(s, "other-doc")  # same bare name elsewhere: still never guessed
+        assert _compile(s, ontology, other, vid3, [ent("g", "Person", "Guest 1")]).entities == {"g": "REVIEW"}
+        assert s.execute(select(Entity)).scalars().one().identity_strength == "name_only"

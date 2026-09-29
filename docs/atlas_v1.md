@@ -1,6 +1,6 @@
 # Atlas V1: deterministic business knowledge graph
 
-**Status:** Phase 1 complete, covering the ontology, schema, normalized documents and the structured layer.
+**Status:** Phase 1 complete, covering the ontology, schema, normalized documents and the structured layer. The ontology is now at **V1.1** (see `ontology/CHANGELOG.md`).
 
 The prototype (`brain/`, tag `prototype-v0`) is kept for reference and for its evaluation harnesses. V1 lives in `atlas/`, with tables in Postgres schema `kg`.
 
@@ -50,13 +50,13 @@ source file ──► adapter ──► NormalizedDocument ──► segment ─
 | Source field | Candidate fact | Trust |
 |---|---|---|
 | email `from` | Document `AUTHORED_BY` Person | 1.00 |
-| email `to`/`cc` | Document `SENT_TO` Person → **no V1.0 relation → review** | — |
+| email `to`/`cc`/`bcc` | Document `SENT_TO` Person (`recipient_type`) *(1.1; under 1.0 → review)* | 1.00 |
 | meeting `calendar_invitees` | Meeting `HAS_PARTICIPANT` Person (invited ≠ attended) | 0.95 |
 | meeting transcript speaker (email, or invitee `matched_speaker_display_name`) | Person `ATTENDED` Meeting | 0.99 |
 | meeting `recorded_by` | Person `ATTENDED` Meeting | 0.95 |
 | `recorded_by.team` | Person `MEMBER_OF` Team | 0.90 |
 | participant email domain (policy-controlled; generic domains excluded) | Person `WORKS_AT` Organization | 0.70 |
-| meeting `action_items` | ActionItem → **no V1.0 type → review** | — |
+| meeting `action_items` | ActionItem `ORIGINATED_IN` Meeting, `ASSIGNED_TO` Person (quote = item text) *(1.1; under 1.0 → review)* | 0.95 |
 
 ## Identity resolution (Phase 1 policy)
 
@@ -69,6 +69,7 @@ source file ──► adapter ──► NormalizedDocument ──► segment ─
   - Any existing match → AMBIGUOUS_ENTITY_MATCH review.
   - A name alone never merges.
 - **A new identified entity whose name matches a weak one** is created anyway and flagged POSSIBLE_DUPLICATE. False negatives are preferred over false merges.
+- **Name-only entities also store a `source_mention` key** (source system + document + mention). Reprocessing the same document, for example after an ontology upgrade, finds its own entity, while the same bare name in *another* document still goes to review. The key never upgrades identity strength.
 
 ## Run
 
@@ -100,15 +101,22 @@ uv run pytest tests/v1
 
 Re-running is a no-op, and two fresh runs produce identical graphs.
 
-## Decisions pending
+## Ontology versions
 
-1. **Ontology gaps surfaced by real data.** These are ontology governance calls, not pipeline changes:
-   - email recipients (`SENT_TO` Document → Person): add a relation in V1.1, or keep them as document metadata only?
-   - Fathom action items: add an `ActionItem` type (with `ASSIGNED_TO`) in V1.1?
-2. **Organization display names are their domains** (`acme.com`) until a directory or the text layer supplies names. Identity is unaffected.
-3. **Earlier amendments not yet applied**, since they matter once text extraction starts:
+- **V1.1** added `ActionItem`, `ASSIGNED_TO`, `ORIGINATED_IN` and `SENT_TO`. These were the two gaps real data surfaced under V1.0.
+- **Upgrading a graph built under 1.0:**
+  - the open gap reviews close automatically (`AUTO_RESOLVED`, audited);
+  - every document is reprocessed under 1.1;
+  - new facts are tagged `1.1`, and existing `1.0` records are untouched.
+- On the sample corpus the upgrade adds 2 entities and 8 edges, opens **0** new review items, and leaves 1 genuine AMBIGUOUS review: a name-only "Sarah Chen".
+- Selecting a version: `ATLAS_ONTOLOGY_DIR=ontology/v1_0` (the default is v1_1).
+
+## Still open
+
+1. **Organization display names are their domains** (`acme.com`) until a directory or the text layer supplies names.
+2. **Earlier amendments for text extraction**, applied from Phase 3:
    - keep `RELATED_TO` / `ASSOCIATED_WITH` out of the LLM's choices;
-   - the compiler computes evidence offsets from the quote (never trusting model offsets);
+   - compute evidence offsets in the compiler;
    - relation-pass gating;
    - review priority and auto-resolve rules;
    - a two-level stability target.

@@ -46,6 +46,8 @@ from atlas.ingestion.adapters import discover, normalize_file
 from atlas.ingestion.normalized import NormalizedDocument
 from atlas.ontology.loader import OntologyError, load_ontology
 from atlas.ontology.models import Ontology
+from atlas.provenance.audit import audit
+from atlas.review.service import reconcile_with_ontology
 
 
 class DocumentTrace(BaseModel):
@@ -94,11 +96,12 @@ class KnowledgeIngestionPipeline:
     def ingest(self, path: str | Path, keep_traces: bool = False) -> RunReport:
         run_id = uuid.uuid4()
         with session_scope(self.engine) as s:
-            self._register_ontology(s)
             s.add(IngestionRun(id=run_id, pipeline_version=PIPELINE_VERSION,
                                ontology_version=self.ontology.version, component_versions=self.component_versions()))
+            s.flush()
+            auto_resolved = self._register_ontology(s, run_id)
         report = RunReport(run_id=run_id)
-        stats: dict[str, float] = {}
+        stats: dict[str, float] = {"reviews_auto_resolved_by_ontology": auto_resolved} if auto_resolved else {}
         for file in discover(path):
             trace = self.process_file(file, run_id)
             _add(stats, f"documents_{trace.status}")
@@ -159,15 +162,21 @@ class KnowledgeIngestionPipeline:
 
     # --- persistence helpers -------------------------------------------------------------
 
-    def _register_ontology(self, s) -> None:
+    def _register_ontology(self, s, run_id: uuid.UUID) -> int:
+        """Record the ontology version on first use; refuse in-place edits.
+        A newly registered version closes the review items it now covers."""
         existing = s.get(OntologyVersion, self.ontology.version)
         if existing is None:
             s.add(OntologyVersion(version=self.ontology.version, checksum=self.ontology.checksum,
                                   definition=self.ontology.model_dump(mode="json")))
-        elif existing.checksum != self.ontology.checksum:
+            audit(s, "ontology_registered", "ontology", None, run_id,
+                  {"version": self.ontology.version, "checksum": self.ontology.checksum})
+            return reconcile_with_ontology(s, self.ontology, run_id)
+        if existing.checksum != self.ontology.checksum:
             raise OntologyError([f"ontology {self.ontology.version} files changed since it was first used "
                                  f"(checksum {existing.checksum[:12]} -> {self.ontology.checksum[:12]}); "
                                  "bump the version instead of editing it in place"])
+        return 0
 
     def _persist(self, s, doc: NormalizedDocument, run_id: uuid.UUID) -> uuid.UUID:
         values = dict(source_system=doc.source_system, source_type=doc.source_type,

@@ -48,7 +48,7 @@ def make_doc(session: Session, name: str = "doc-1", text_body: str = "") -> tupl
     session.merge(Document(id=doc.document_id, source_system="test", source_type="text",
                            source_external_id=name, title=name, permissions={}))
     version_id = uuid.uuid4()
-    session.add(DocumentVersion(id=version_id, document_id=doc.document_id, checksum=doc.checksum() + name,
+    session.add(DocumentVersion(id=version_id, document_id=doc.document_id, checksum=uuid.uuid4().hex,
                                 normalizer_version="test", normalized=doc.model_dump(mode="json")))
     session.flush()
     return doc, version_id

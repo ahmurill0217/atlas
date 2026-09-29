@@ -8,12 +8,15 @@ rules encoded here:
   - email sender          -> Document AUTHORED_BY Person
   - email domain          -> Person WORKS_AT Organization, only when the trust
                              policy enables it and the domain is not generic
-Facts with no ontology home (email recipients, action items) are still proposed;
-the compiler routes them to review as ontology candidates instead of dropping them.
+  - email to/cc/bcc       -> Document SENT_TO Person (recipient_type)          [ontology 1.1]
+  - meeting action item   -> ActionItem ORIGINATED_IN Meeting, ASSIGNED_TO Person [ontology 1.1]
+The extractor proposes the same candidates whatever the ontology version; under
+an ontology without a home for them (1.0) the compiler routes them to review.
 """
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 
 from atlas.config import STRUCTURED_EXTRACTOR_VERSION
@@ -49,7 +52,7 @@ class StructuredExtractor:
                 self._edge(anchor, people[doc.author.source_field], "AUTHORED_BY", doc.author.source_field, "email.from")
             for p in doc.participants:
                 if p.role in ("to", "cc", "bcc"):
-                    self._edge(anchor, people[p.source_field], "SENT_TO", p.source_field, "email.from",
+                    self._edge(anchor, people[p.source_field], "SENT_TO", p.source_field, "email.recipients",
                                properties={"recipient_type": p.role})
         elif doc.source_type == "meeting":
             self._meeting_edges(doc, anchor, people)
@@ -124,7 +127,8 @@ class StructuredExtractor:
 
     # --- edges -----------------------------------------------------------------
 
-    def _edge(self, src: str, tgt: str, relation: str, source_field: str, trust_key: str, properties: dict | None = None) -> None:
+    def _edge(self, src: str, tgt: str, relation: str, source_field: str, trust_key: str, properties: dict | None = None,
+              evidence_text: str | None = None, section_ordinal: int | None = None) -> None:
         local_id = f"{src}|{relation}|{tgt}"
         if any(e.local_id == local_id for e in self._out.edges):
             return
@@ -133,7 +137,8 @@ class StructuredExtractor:
             provenance_class=PROVENANCE, extractor=EXTRACTOR, extractor_version=STRUCTURED_EXTRACTOR_VERSION,
             confidence=self.trust.get(trust_key, 0.0), properties=properties or {},
             evidence=EvidenceRef(document_id=self._doc.document_id, document_version_id=self._version,
-                                 source_field=source_field, observed_at=self._doc.created_at)))
+                                 source_field=source_field, evidence_text=evidence_text,
+                                 section_ordinal=section_ordinal, observed_at=self._doc.created_at)))
 
     def _meeting_edges(self, doc: NormalizedDocument, meeting: str, people: dict[str, str]) -> None:
         invitees = [p for p in doc.participants if p.role == "invitee"]
@@ -153,8 +158,21 @@ class StructuredExtractor:
         for s in doc.sections:
             if s.kind != "action_item":
                 continue
-            self._add(CandidateEntity(
-                local_id=f"action_item:{s.ordinal}", suggested_type="ActionItem", name=s.text[:120],
-                properties={"description": s.text, "assignee_email": s.metadata.get("assignee_email"),
-                            "completed": s.metadata.get("completed"), "playback_url": s.metadata.get("playback_url")},
-                **self._base(s.metadata.get("source_field"))))
+            field = s.metadata.get("source_field")
+            # Identity: the meeting plus the item's content, so reordering the list never swaps items.
+            digest = hashlib.sha256(f"{s.metadata.get('recording_timestamp')}|{s.text}".encode()).hexdigest()[:16]
+            props = {"description": s.text, "status": "completed" if s.metadata.get("completed") else "open",
+                     "source_system": doc.source_system, "recording_timestamp": s.metadata.get("recording_timestamp"),
+                     "playback_url": s.metadata.get("playback_url")}
+            item = self._add(CandidateEntity(
+                local_id=f"action_item:{digest}", suggested_type="ActionItem", name=s.text[:120],
+                identifiers={"action_item_key": f"{doc.source_system}:{doc.source_external_id}:{digest}"},
+                properties={k: v for k, v in props.items() if v is not None}, **self._base(field)))
+            self._edge(item, meeting, "ORIGINATED_IN", field, "meeting.action_item",
+                       evidence_text=s.text, section_ordinal=s.ordinal)
+            email, name = s.metadata.get("assignee_email"), s.metadata.get("assignee_name")
+            if email or name:
+                assignee = self._person(Participant(name=name, email=email, role="assignee",
+                                                    source_field=f"{field}.assignee"))
+                self._edge(item, assignee, "ASSIGNED_TO", f"{field}.assignee", "meeting.action_item",
+                           evidence_text=s.text, section_ordinal=s.ordinal)

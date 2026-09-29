@@ -5,8 +5,10 @@
        several entities   => REVIEW (POSSIBLE_DUPLICATE: identifiers disagree)
        none               => CREATE (strong identity); a same-named weak entity
                              is flagged POSSIBLE_DUPLICATE, never merged
-  2. name only    -> normalized name / alias lookup within the type
-       none               => CREATE (weak, 'name_only' identity)
+  2. name only    -> first the mention key (source system + document + mention), so
+                             re-processing the same mention finds the entity it created;
+                             then normalized name / alias lookup within the type
+       none               => CREATE (weak, 'name_only' identity; the mention key is stored)
        one or more        => REVIEW (AMBIGUOUS_ENTITY_MATCH) — names alone never merge
 Scored matching (context, fuzzy, embeddings, LLM adjudication) arrives in Phase 4
 and plugs in before the REVIEW outcomes; this policy stays the safe default.
@@ -42,11 +44,17 @@ class Resolution(BaseModel):
     identifiers: dict[str, str] = Field(default_factory=dict)       # normalized
 
 
+# Internal, source-native identifier for name-only entities: never an ontology
+# identity field and never upgrades identity strength.
+MENTION_KEY = "source_mention"
+
+
 class IdentityResolver:
     def __init__(self, session: Session, ontology: Ontology):
         self.session, self.ontology = session, ontology
 
-    def resolve(self, entity_type: str, name: str | None, identifiers: dict[str, str]) -> Resolution:
+    def resolve(self, entity_type: str, name: str | None, identifiers: dict[str, str],
+                mention_key: str | None = None) -> Resolution:
         ids = {t: normalize_identifier(t, v) for t, v in sorted(identifiers.items()) if v}
         family = self.ontology.ancestors(entity_type)
         if ids:
@@ -63,6 +71,11 @@ class IdentityResolver:
             weak = self._by_name(family, name, weak_only=True)
             return Resolution(outcome=Outcome.CREATE, identifiers=ids, possible_same_as=weak,
                               reason="new identifier" + (" (same name as an unconfirmed entity)" if weak else ""))
+        if mention_key:
+            same = self.session.execute(select(EntityExternalId.entity_id).where(
+                EntityExternalId.identifier_type == MENTION_KEY, EntityExternalId.value == mention_key)).scalar_one_or_none()
+            if same:
+                return Resolution(outcome=Outcome.MATCHED, entity_id=same, reason="same source mention re-processed")
         matches = self._by_name(family, name)
         if not matches:
             return Resolution(outcome=Outcome.CREATE, reason="no identifiers; no entity with this name")

@@ -14,6 +14,8 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from atlas.db.models import ReviewItem
+from atlas.ontology.mapper import MapStatus, map_entity_type, map_relation
+from atlas.ontology.models import Ontology
 from atlas.provenance.audit import audit
 
 REVIEW_TYPES = {
@@ -56,3 +58,27 @@ class ReviewService:
                                  .values(frequency=ReviewItem.frequency + 1, examples=examples,
                                          updated_at=func.now()))
         return item.id
+
+
+def reconcile_with_ontology(session: Session, ontology: Ontology, run_id: uuid.UUID | None = None) -> int:
+    """After a new ontology version is registered, close NEW_ONTOLOGY_CANDIDATE
+    items it now covers (AUTO_RESOLVED, audited). The facts themselves are
+    created when documents are reprocessed under the new version."""
+    resolved = 0
+    items = session.execute(select(ReviewItem).where(
+        ReviewItem.review_type == "NEW_ONTOLOGY_CANDIDATE", ReviewItem.status == "OPEN")).scalars().all()
+    for item in items:
+        p = item.candidate_payload
+        if p.get("kind") == "entity_type":
+            m = map_entity_type(ontology, p["candidate_name"])
+            mapped_to = m.entity_type if m.status is MapStatus.MAPPED else None
+        else:
+            m = map_relation(ontology, p["suggested_relation"], p["source_type"], p["target_type"])
+            mapped_to = m.canonical if m.status is MapStatus.MAPPED else None
+        if mapped_to:
+            item.status, item.resolved_at, item.reviewer = "AUTO_RESOLVED", func.now(), "ontology"
+            item.resolution = {"ontology_version": ontology.version, "mapped_to": mapped_to}
+            audit(session, "review_auto_resolved", "review_item", item.id, run_id,
+                  {"ontology_version": ontology.version, "mapped_to": mapped_to})
+            resolved += 1
+    return resolved

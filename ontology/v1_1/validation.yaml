@@ -1,0 +1,43 @@
+# Ontology V1.1 — Deterministic policies. Thresholds live here, not in code.
+version: "1.1"
+
+provenance_classes:
+  STRUCTURED_SOURCE: {requires: [document_id, source_field]}
+  EXPLICIT_TEXT:     {requires: [document_id, evidence_text]}
+  INFERRED_TEXT:     {requires: [document_id, evidence_text]}
+  HUMAN_CONFIRMED:   {requires: [reviewer]}
+
+# Minimum confidence for automatic acceptance, per provenance class.
+# Below it the fact goes to review (LOW_CONFIDENCE_RELATION), never silently in.
+acceptance:
+  STRUCTURED_SOURCE: 0.60
+  EXPLICIT_TEXT: 0.85
+  INFERRED_TEXT: 1.01      # never auto-accepted in V1.0
+  HUMAN_CONFIRMED: 0.0
+
+# Confidence assigned to facts derived from structured fields, by rule.
+# Configurable trust policy (spec §41): stronger sources get higher values.
+structured_trust:
+  email.from: 1.0                     # Document AUTHORED_BY sender
+  meeting.transcript_speaker: 0.99    # speaker matched to invitee email -> ATTENDED
+  meeting.recorded_by: 0.95           # the recorder was present -> ATTENDED
+  meeting.calendar_invitee: 0.95      # invited -> HAS_PARTICIPANT (not ATTENDED)
+  fathom.team: 0.90                   # recorder's Fathom team -> MEMBER_OF
+  email.recipients: 1.0               # Document SENT_TO recipient (to/cc/bcc headers)         [1.1]
+  meeting.action_item: 0.95           # ActionItem ORIGINATED_IN / ASSIGNED_TO from Fathom     [1.1]
+  email_domain_employment: 0.70       # Person WORKS_AT Organization inferred from email domain
+
+# Employment from email domain (spec §59: only when policy allows it).
+email_domain_employment:
+  enabled: true
+  excluded_domains: [gmail.com, googlemail.com, yahoo.com, outlook.com, hotmail.com, live.com,
+                     msn.com, icloud.com, me.com, aol.com, proton.me, protonmail.com, gmx.com]
+
+# Entity resolution thresholds (used by scored matching in later phases).
+resolution:
+  auto_merge: 0.95
+  review_min: 0.80
+
+normalization:
+  corporate_suffixes: [inc, incorporated, corp, corporation, co, company, llc, ltd, limited,
+                       plc, gmbh, ag, sa, bv, nv, pty, lp, llp]
