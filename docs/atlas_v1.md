@@ -1,6 +1,9 @@
 # Atlas V1: deterministic business knowledge graph
 
-**Status:** Phase 1 complete, covering the ontology, schema, normalized documents and the structured layer. The ontology is now at **V1.1** (see `ontology/CHANGELOG.md`).
+**Status:**
+- **Phase 1 complete:** ontology, schema, normalized documents, and the structured layer.
+- **Phase 2 complete:** PDF, DOCX and generic-JSON ingestion, plus segmentation.
+- **Ontology at V1.2** (see `ontology/CHANGELOG.md`).
 
 The prototype (`brain/`, tag `prototype-v0`) is kept for reference and for its evaluation harnesses. V1 lives in `atlas/`, with tables in Postgres schema `kg`.
 
@@ -37,7 +40,8 @@ source file ──► adapter ──► NormalizedDocument ──► segment ─
 | `ontology/v1_0/aliases.yaml`, `mappings.yaml` | Language variation → canonical schema; context-dependent mappings (e.g. OWNS between Person and Project → OWNS_PROJECT) |
 | `ontology/v1_0/validation.yaml` | Provenance classes and the evidence each requires; acceptance thresholds; structured-source trust; email-domain employment policy; resolution thresholds; normalization rules |
 | `atlas/ontology/` | Loader (rejects inconsistent config at startup), mapper, validator. All pure functions of the ontology. |
-| `atlas/ingestion/` | `NormalizedDocument` plus adapters: email JSON, meeting JSON (Fathom webhook shape), plain text/Markdown |
+| `atlas/ingestion/` | `NormalizedDocument` plus adapters: email JSON, meeting JSON (Fathom webhook shape), generic "Atlas document" JSON (Drive-style metadata), PDF (page-aware), DOCX (heading- and table-aware), plain text/Markdown (heading-aware) |
+| `atlas/ingestion/segmentation.py` | Shared segmenter. Splits only oversized blocks, at sentence boundaries, keeping offsets exact. |
 | `atlas/extraction/structured.py` | Metadata → candidates, provenance `STRUCTURED_SOURCE` |
 | `atlas/resolution/` | Deterministic normalization; identity resolution (identifiers first, names never merge) |
 | `atlas/compiler/` | The only decision-maker |
@@ -101,6 +105,44 @@ uv run pytest tests/v1
 
 Re-running is a no-op, and two fresh runs produce identical graphs.
 
+## Phase 2: ingestion and segmentation
+
+- **Segmentation follows each format's natural boundaries:**
+  - email: new text vs. quoted chain;
+  - meetings: summary, speaker turns, action items;
+  - Markdown and DOCX: heading sections, paragraphs, tables;
+  - PDF: pages, then headings and paragraphs within a page.
+
+  Only a block over 2,000 characters is split, and only at sentence boundaries ("U.S.", "Inc.", "e.g." don't end sentences). Sections carry `heading_path` and/or `page_number`.
+- **PDF:**
+  - Repairs extraction artifacts: ligatures, hyphenated line breaks, small caps, NUL bytes.
+  - Recovers headings, paragraphs and list items from layout cues when the extractor emits no blank lines.
+  - A scanned PDF (no text layer) is still ingested and flagged `needs_ocr`.
+  - An unreadable PDF fails alone; the run continues.
+- **DOCX:** body paragraphs and tables are read in document order, and Title and Heading 1–9 build the heading path.
+- **Generic JSON (`atlas_document: "1.0"`):** the contract any future connector can emit, holding metadata, participants with roles, and text or sections. See `atlas/ingestion/adapters/generic_json.py`.
+- **Evidence page numbers:** evidence that points at a section inherits its page, so text facts in Phase 3 will cite the page.
+- **Authors:**
+  - A document author identified *by email* becomes `AUTHORED_BY` (ontology 1.2 trust rule `document.author`).
+  - Name-only file-metadata authors ("Microsoft Office User") are kept as metadata, never as edges.
+  - Drive owner/editor roles are proposed as `OWNED_BY` / `EDITED_BY` and surface as ontology-gap reviews.
+- **Identity fixes found in Phase 2:**
+  - **Source-native IDs are case-sensitive:** Drive IDs, message IDs, paths, meeting IDs. Only emails, domains and team keys are case-folded.
+  - **Property provenance:** each entity property records the document that set it (`property_sources`). The same document re-describing itself supersedes its old value (audited); a *different* document disagreeing is a `CONFLICTING_FACT`.
+  - **Changing identifier normalization is a breaking change for stored identifiers.** A production deployment would need a data migration that re-normalizes `entity_external_ids`.
+
+Sample corpus (9 documents: 3 emails, 2 meetings, Drive JSON, DOCX, PDF, Markdown), with 0 LLM calls:
+
+| Result | Count |
+|---|---|
+| Entities | 21 |
+| Edges | 27 (38 evidence rows, 0 unsupported) |
+| Sections | 38 (PDF sections all carry page numbers; DOCX, Drive and Markdown carry heading paths) |
+
+Open reviews:
+- the name-only "Sarah Chen" (AMBIGUOUS);
+- `OWNED_BY` and `EDITED_BY`: ontology decisions.
+
 ## Ontology versions
 
 - **V1.1** added `ActionItem`, `ASSIGNED_TO`, `ORIGINATED_IN` and `SENT_TO`. These were the two gaps real data surfaced under V1.0.
@@ -123,7 +165,6 @@ Re-running is a no-op, and two fresh runs produce identical graphs.
 
 ## Next phases
 
-- **Phase 2:** PDF and DOCX adapters (page-aware), plus a generic structured JSON adapter.
 - **Phase 3+:** text extraction tiers, cheapest first, all producing candidates into the same compiler:
   1. dictionary linking and rules;
   2. small local models;

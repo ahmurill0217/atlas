@@ -103,6 +103,7 @@ class Entity(Base):
     normalized_name: Mapped[str] = mapped_column(Text)
     ontology_version: Mapped[str] = mapped_column(Text)
     properties: Mapped[dict] = mapped_column(JSONB, default=dict)
+    property_sources: Mapped[dict] = mapped_column(JSONB, default=dict)  # property -> document id that set it
     roles: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list)
     identity_strength: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, default="active")

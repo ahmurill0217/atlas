@@ -1,0 +1,31 @@
+# Ontology V1.2 — Context-dependent mappings.
+# A suggestion maps to a canonical relation ONLY for the listed type pairs.
+# Example: OWNS between Person/Team -> Project means OWNS_PROJECT; OWNS
+# between any other types has no mapping and goes to review.
+version: "1.2"
+
+relation_mappings:
+  - suggested: OWNS
+    source: [Person, Team]
+    target: [Project]
+    canonical: OWNS_PROJECT
+  - suggested: LEADS
+    source: [Person, Team]
+    target: [Project]
+    canonical: OWNS_PROJECT
+  - suggested: EMPLOYED_BY
+    source: [Person]
+    target: [Organization]
+    canonical: WORKS_AT
+  - suggested: PARTICIPATED_IN
+    source: [Person]
+    target: [Meeting]
+    canonical: ATTENDED
+  - suggested: SPOKE_IN
+    source: [Person]
+    target: [Meeting]
+    canonical: ATTENDED
+  - suggested: INVITED_TO
+    source: [Meeting]
+    target: [Person]
+    canonical: HAS_PARTICIPANT

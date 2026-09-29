@@ -24,10 +24,11 @@ class GraphRepository:
     # --- entities -------------------------------------------------------------------
 
     def create_entity(self, entity_type: str, name: str, properties: dict, roles: list[str],
-                      identity_strength: str) -> uuid.UUID:
+                      identity_strength: str, source_document_id: uuid.UUID | None = None) -> uuid.UUID:
         entity = Entity(id=uuid.uuid4(), entity_type=entity_type, canonical_name=name,
                         normalized_name=normalize_name(name), ontology_version=self.ontology_version,
-                        properties=properties, roles=sorted(set(roles)), identity_strength=identity_strength)
+                        properties=properties, roles=sorted(set(roles)), identity_strength=identity_strength,
+                        property_sources={k: str(source_document_id) for k in properties} if source_document_id else {})
         self.session.add(entity)
         self.session.flush()
         audit(self.session, "entity_created", "entity", entity.id, self.run_id,
@@ -59,21 +60,35 @@ class GraphRepository:
                                            normalized_alias=normalized, source_document_id=source_document_id)
                 .on_conflict_do_nothing(index_elements=["entity_id", "normalized_alias"]))
 
-    def enrich(self, entity_id: uuid.UUID, properties: dict, roles: list[str]) -> dict[str, tuple]:
-        """Fill properties the entity lacks and add roles. Never overwrites a
-        different existing value: returns {property: (existing, proposed)} conflicts."""
+    def enrich(self, entity_id: uuid.UUID, properties: dict, roles: list[str],
+               source_document_id: uuid.UUID | None = None) -> dict[str, tuple]:
+        """Fill missing properties and add roles. A value previously set by the
+        SAME document is superseded (the source re-described itself, e.g. after
+        a pipeline upgrade; audited). A different document disagreeing is never
+        overwritten: returned as {property: (existing, proposed)} conflicts."""
         entity = self.session.get(Entity, entity_id)
-        merged, conflicts = dict(entity.properties), {}
+        merged, sources, conflicts, updated = dict(entity.properties), dict(entity.property_sources or {}), {}, {}
+        source = str(source_document_id) if source_document_id else None
         for key, value in properties.items():
             if key not in merged or merged[key] in (None, ""):
                 merged[key] = value
+                if source:
+                    sources[key] = source
             elif merged[key] != value:
-                conflicts[key] = (merged[key], value)
+                if source and sources.get(key) == source:
+                    updated[key] = (merged[key], value)
+                    merged[key] = value
+                else:
+                    conflicts[key] = (merged[key], value)
         added_roles = sorted(set(roles) - set(entity.roles))
-        if merged != entity.properties or added_roles:
-            entity.properties, entity.roles = merged, sorted(set(entity.roles) | set(roles))
+        if merged != entity.properties or added_roles or sources != (entity.property_sources or {}):
+            entity.properties, entity.property_sources = merged, sources
+            entity.roles = sorted(set(entity.roles) | set(roles))
             if added_roles:
                 audit(self.session, "role_added", "entity", entity_id, self.run_id, {"roles": added_roles})
+            if updated:
+                audit(self.session, "property_superseded", "entity", entity_id, self.run_id,
+                      {"source_document": source, "changes": {k: list(v) for k, v in updated.items()}})
         return conflicts
 
     # --- edges ------------------------------------------------------------------------
@@ -110,16 +125,20 @@ class GraphRepository:
             edge.last_seen_at = max(filter(None, [edge.last_seen_at, observed_at]))
         return edge.id, False
 
-    def section_id(self, document_version_id: uuid.UUID | None, ordinal: int | None) -> uuid.UUID | None:
+    def section(self, document_version_id: uuid.UUID | None, ordinal: int | None) -> tuple[uuid.UUID | None, int | None]:
+        """(section id, page number) for an evidence pointer, if it names a section."""
         if document_version_id is None or ordinal is None:
-            return None
-        return self.session.execute(select(DocumentSection.id).where(
+            return None, None
+        row = self.session.execute(select(DocumentSection.id, DocumentSection.metadata_).where(
             DocumentSection.document_version_id == document_version_id,
-            DocumentSection.ordinal == ordinal)).scalar_one_or_none()
+            DocumentSection.ordinal == ordinal)).one_or_none()
+        return (row.id, row.metadata_.get("page_number")) if row else (None, None)
 
     def attach_evidence(self, edge_id: uuid.UUID, ev: EvidenceRef, provenance_class: str, extractor: str,
                         extractor_version: str, confidence: float) -> bool:
-        section_id = self.section_id(ev.document_version_id, ev.section_ordinal)
+        section_id, page = self.section(ev.document_version_id, ev.section_ordinal)
+        if ev.page_number is None and page is not None:
+            ev = ev.model_copy(update={"page_number": page})
         inserted = self.session.execute(
             insert(EdgeEvidence).values(
                 id=uuid.uuid4(), edge_id=edge_id, evidence_key=evidence_key(ev), document_id=ev.document_id,

@@ -1,0 +1,25 @@
+{
+  "atlas_document": "1.0",
+  "source_system": "gdrive",
+  "id": "1Qx7AtlasPilotPlan",
+  "source_type": "google_doc",
+  "title": "Atlas pilot plan",
+  "uri": "https://docs.google.com/document/d/1Qx7AtlasPilotPlan",
+  "created_at": "2026-09-09T20:10:00Z",
+  "updated_at": "2026-09-16T11:42:00Z",
+  "author": {"name": "Priya Shah", "email": "priya.shah@northwind.io"},
+  "participants": [
+    {"name": "Mike Rodriguez", "email": "mike.rodriguez@northwind.io", "role": "owner"},
+    {"name": "Sarah Chen", "email": "sarah.chen@acme.com", "role": "editor"},
+    {"name": "Anyone at Northwind", "email": null, "role": "viewer"}
+  ],
+  "sections": [
+    {"kind": "heading", "level": 1, "text": "Atlas pilot plan"},
+    {"kind": "paragraph", "text": "Goal: Acme's Boston team uses the Atlas assistant daily by November 30."},
+    {"kind": "heading", "level": 2, "text": "Workstreams"},
+    {"kind": "paragraph", "text": "Mike Rodriguez owns the implementation. Priya Shah coordinates onboarding. Tom Becker runs the Acme security review."},
+    {"kind": "table", "text": "Milestone | Date\nSSO integration | 2026-10-20\nPilot go-live | 2026-11-30"}
+  ],
+  "metadata": {"mime_type": "application/vnd.google-apps.document", "drive_folder": "Clients/Acme/Atlas"},
+  "permissions": {"drive_permission_ids": ["perm-1", "perm-2"]}
+}

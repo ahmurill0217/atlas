@@ -1,5 +1,4 @@
 import json
-import shutil
 
 import pytest
 from sqlalchemy import text
@@ -26,12 +25,12 @@ def snapshot(engine) -> dict:
         return {"entities": sorted(key.values()), "edges": edges, "reviews": reviews, "stats": q.stats()}
 
 
-def ingest(kg, settings, ontology, path=CORPUS):
+def ingest(kg, settings, ontology, path):
     return KnowledgeIngestionPipeline(kg, settings, ontology).ingest(path)
 
 
-def test_corpus_builds_expected_graph(kg, atlas_settings, ontology):
-    report = ingest(kg, atlas_settings, ontology)
+def test_corpus_builds_expected_graph(kg, atlas_settings, ontology, phase1_corpus):
+    report = ingest(kg, atlas_settings, ontology, phase1_corpus)
     assert report.stats["documents_processed"] == 6 and "documents_failed" not in report.stats
     assert report.stats["llm_calls"] == 0
     with Session(kg) as s:
@@ -59,19 +58,18 @@ def test_corpus_builds_expected_graph(kg, atlas_settings, ontology):
         assert kinds == {"SENT_TO", "ActionItem"}
 
 
-def test_reingest_is_a_noop(kg, atlas_settings, ontology):
-    ingest(kg, atlas_settings, ontology)
+def test_reingest_is_a_noop(kg, atlas_settings, ontology, phase1_corpus):
+    ingest(kg, atlas_settings, ontology, phase1_corpus)
     before = snapshot(kg)
-    report = ingest(kg, atlas_settings, ontology)
+    report = ingest(kg, atlas_settings, ontology, phase1_corpus)
     assert report.stats == {**{k: v for k, v in report.stats.items() if k.startswith("latency")},
                             "documents_unchanged": 6, "sections": report.stats["sections"],
                             "review_items_opened": 0, "llm_calls": 0, "llm_tokens": 0, "llm_cost_usd": 0.0}
     assert snapshot(kg) == before
 
 
-def test_changed_document_adds_version_not_duplicates(kg, atlas_settings, ontology, tmp_path):
-    corpus = tmp_path / "corpus"
-    shutil.copytree(CORPUS, corpus)
+def test_changed_document_adds_version_not_duplicates(kg, atlas_settings, ontology, phase1_corpus):
+    corpus = phase1_corpus
     ingest(kg, atlas_settings, ontology, corpus)
     before = snapshot(kg)
     path = corpus / "emails" / "2026-09-01_atlas_rollout.json"
@@ -86,27 +84,27 @@ def test_changed_document_adds_version_not_duplicates(kg, atlas_settings, ontolo
     assert after["stats"]["document_versions"] == before["stats"]["document_versions"] + 1
 
 
-def test_fresh_runs_produce_identical_graphs(kg, atlas_settings, ontology, engine):
-    ingest(kg, atlas_settings, ontology)
+def test_fresh_runs_produce_identical_graphs(kg, atlas_settings, ontology, engine, phase1_corpus):
+    ingest(kg, atlas_settings, ontology, phase1_corpus)
     first = snapshot(kg)
     with engine.begin() as conn:
         conn.execute(text("TRUNCATE kg.audit_log, kg.review_items, kg.candidate_edges, kg.candidate_entities, "
                           "kg.edge_evidence, kg.edges, kg.entity_external_ids, kg.entity_aliases, kg.entities, "
                           "kg.document_processing, kg.document_sections, kg.document_versions, kg.documents, "
                           "kg.ingestion_runs CASCADE"))
-    ingest(kg, atlas_settings, ontology)
+    ingest(kg, atlas_settings, ontology, phase1_corpus)
     assert snapshot(kg) == first
 
 
-def test_audit_log_is_append_only(kg, atlas_settings, ontology):
-    ingest(kg, atlas_settings, ontology)
+def test_audit_log_is_append_only(kg, atlas_settings, ontology, phase1_corpus):
+    ingest(kg, atlas_settings, ontology, phase1_corpus)
     with pytest.raises(DBAPIError, match="append-only"):
         with kg.begin() as conn:
             conn.execute(text("UPDATE kg.audit_log SET actor = 'someone'"))
 
 
-def test_ontology_edited_in_place_is_refused(kg, atlas_settings, ontology):
-    ingest(kg, atlas_settings, ontology)
+def test_ontology_edited_in_place_is_refused(kg, atlas_settings, ontology, phase1_corpus):
+    ingest(kg, atlas_settings, ontology, phase1_corpus)
     tampered = ontology.model_copy(update={"checksum": "0" * 64})
     with pytest.raises(OntologyError, match="bump the version"):
         KnowledgeIngestionPipeline(kg, atlas_settings, tampered).ingest(CORPUS)

@@ -10,6 +10,9 @@ rules encoded here:
                              policy enables it and the domain is not generic
   - email to/cc/bcc       -> Document SENT_TO Person (recipient_type)          [ontology 1.1]
   - meeting action item   -> ActionItem ORIGINATED_IN Meeting, ASSIGNED_TO Person [ontology 1.1]
+  - document author/creator with an email -> Document AUTHORED_BY Person          [ontology 1.2]
+  - document owner / editor (e.g. Drive)  -> proposed OWNED_BY / EDITED_BY (no ontology home:
+                                             surfaced for governance, never invented)
 The extractor proposes the same candidates whatever the ontology version; under
 an ontology without a home for them (1.0) the compiler routes them to review.
 """
@@ -26,6 +29,9 @@ from atlas.ontology.models import Ontology
 from atlas.resolution.normalize import domain_of, normalize_name
 
 EXTRACTOR = "structured"
+DOCUMENT_ROLE_PROPOSALS = {"owner": "OWNED_BY", "editor": "EDITED_BY"}
+MIME_TYPES = {"email": "message/rfc822", "text": "text/plain", "pdf": "application/pdf",
+              "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
 PROVENANCE = "STRUCTURED_SOURCE"
 
 
@@ -56,6 +62,15 @@ class StructuredExtractor:
                                properties={"recipient_type": p.role})
         elif doc.source_type == "meeting":
             self._meeting_edges(doc, anchor, people)
+        else:
+            for p in doc.participants:
+                if not p.email:
+                    continue  # name-only file metadata never becomes an edge
+                if p.role in ("author", "creator"):
+                    self._edge(anchor, people[p.source_field], "AUTHORED_BY", p.source_field, "document.author")
+                elif p.role in DOCUMENT_ROLE_PROPOSALS:
+                    self._edge(anchor, people[p.source_field], DOCUMENT_ROLE_PROPOSALS[p.role], p.source_field,
+                               "document.author")
 
         for p in doc.participants:
             self._employment(p, people[p.source_field])
@@ -96,7 +111,7 @@ class StructuredExtractor:
         source_id = f"{doc.source_system}:{doc.source_external_id}"
         props = {"title": doc.title, "source_system": doc.source_system, "source_id": source_id,
                  "created_at": created, "uri": doc.uri,
-                 "mime_type": "message/rfc822" if doc.source_type == "email" else "text/plain"}
+                 "mime_type": doc.metadata.get("mime_type") or MIME_TYPES.get(doc.source_type)}
         return self._add(CandidateEntity(local_id="document", suggested_type="Document",
                                          name=doc.title or doc.source_external_id, identifiers={"source_id": source_id},
                                          properties={k: v for k, v in props.items() if v is not None},

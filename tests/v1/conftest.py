@@ -21,6 +21,23 @@ KG_TABLES = ["audit_log", "review_items", "candidate_edges", "candidate_entities
              "document_sections", "document_versions", "documents", "ingestion_runs", "ontology_versions"]
 
 
+PHASE1_FILES = ["emails/2026-09-01_atlas_rollout.json", "emails/2026-09-03_re_atlas.json",
+                "emails/2026-09-04_gmail_contact.json", "meetings/2026-09-08_atlas_kickoff.json",
+                "meetings/2026-09-15_atlas_followup.json", "docs/atlas_project_notes.md"]
+
+
+@pytest.fixture
+def phase1_corpus(tmp_path) -> Path:
+    """The original six Phase 1 documents (tests asserting exact Phase 1 results use these)."""
+    import shutil
+
+    root = tmp_path / "phase1_corpus"
+    for rel in PHASE1_FILES:
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(CORPUS / rel, root / rel)
+    return root
+
+
 @pytest.fixture(scope="session")
 def ontology():
     return load_ontology(str(ROOT / "ontology" / "v1_0"))

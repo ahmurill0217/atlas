@@ -113,3 +113,29 @@ def test_reprocessing_a_name_only_mention_is_not_ambiguous(kg, ontology):
         other, vid3 = make_doc(s, "other-doc")  # same bare name elsewhere: still never guessed
         assert _compile(s, ontology, other, vid3, [ent("g", "Person", "Guest 1")]).entities == {"g": "REVIEW"}
         assert s.execute(select(Entity)).scalars().one().identity_strength == "name_only"
+
+
+def test_source_ids_are_case_sensitive_but_emails_are_not(kg, ontology):
+    with Session(kg) as s:
+        doc, vid = make_doc(s, "ids")
+        report = _compile(s, ontology, doc, vid, [
+            ent("a", "Document", "Plan A", source_id="gdrive:1AbC"), ent("b", "Document", "Plan B", source_id="gdrive:1abc"),
+            ent("p", "Person", "Pat", email="Pat@X.com"), ent("q", "Person", "Pat Q", email="pat@x.COM")])
+        assert report.entities == {"a": "CREATED", "b": "CREATED", "p": "CREATED", "q": "MATCHED"}
+
+
+def test_same_source_supersedes_its_own_property_but_others_conflict(kg, ontology):
+    with Session(kg) as s:
+        doc, vid = make_doc(s, "self")
+        acme = ent("o", "Organization", "Acme", domain="acme.com")
+        acme.properties = {"organization_type": "customer"}
+        _compile(s, ontology, doc, vid, [acme])
+        acme2 = acme.model_copy(update={"properties": {"organization_type": "enterprise customer"}})
+        _, vid2 = make_doc(s, "self")            # same document, newer version / pipeline
+        _compile(s, ontology, doc, vid2, [acme2])
+        assert s.execute(select(Entity)).scalar_one().properties["organization_type"] == "enterprise customer"
+        assert not _reviews(s, "CONFLICTING_FACT")
+        other, vid3 = make_doc(s, "other")      # a different source disagrees
+        _compile(s, ontology, other, vid3, [acme.model_copy(update={"properties": {"organization_type": "vendor"}})])
+        assert s.execute(select(Entity)).scalar_one().properties["organization_type"] == "enterprise customer"
+        assert _reviews(s, "CONFLICTING_FACT")

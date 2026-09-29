@@ -120,7 +120,7 @@ class GraphCompiler:
         name = cand.name or next(iter(res.identifiers.values()), "unnamed")
         if res.outcome is Outcome.CREATE:
             entity_id = self.repo.create_entity(entity_type, name, cand.properties, roles,
-                                                "identifier" if res.identifiers else "name_only")
+                                                "identifier" if res.identifiers else "name_only", doc.document_id)
             decision = "CREATED"
             for other in res.possible_same_as:
                 self.reviews.raise_item(
@@ -130,7 +130,7 @@ class GraphCompiler:
                     source_document_id=doc.document_id, related_entities=[entity_id, other])
         else:
             entity_id, decision = res.entity_id, "MATCHED"
-            conflicts = self.repo.enrich(entity_id, cand.properties, roles)
+            conflicts = self.repo.enrich(entity_id, cand.properties, roles, doc.document_id)
             if conflicts:
                 self.reviews.raise_item(
                     "CONFLICTING_FACT", f"CONFLICTING_FACT:entity:{entity_id}:{sorted(conflicts)}",

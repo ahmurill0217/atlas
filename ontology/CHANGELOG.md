@@ -3,6 +3,14 @@
 Each version is an immutable directory. The pipeline refuses to run if a version's files change after first use.
 Graph objects record the version they were created under.
 
+## 1.2 (2026-09-28)
+
+A policy-only change; no schema changes.
+
+- **Trust rule `document.author` (0.95):** a document's author identified **by email** in structured metadata, for example Drive API metadata in an Atlas document JSON, becomes `Document AUTHORED_BY Person`.
+- **Name-only authors from file metadata are never turned into edges.** This covers PDF/DOCX core properties, which are often junk.
+- **Drive `owner` / `editor` roles are proposed as `OWNED_BY` / `EDITED_BY`.** These have no ontology home, so they surface as `NEW_ONTOLOGY_CANDIDATE` reviews for a governance decision.
+
 ## 1.1 (2026-09-28)
 
 Added in response to NEW_ONTOLOGY_CANDIDATE review items raised by real data under 1.0.

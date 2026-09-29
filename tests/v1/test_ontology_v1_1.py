@@ -9,7 +9,7 @@ from atlas.db.models import Edge, Entity, ReviewItem
 from atlas.graph.queries import GraphQueries
 from atlas.ontology import MapStatus, load_ontology, map_entity_type, map_relation
 from atlas.pipeline import KnowledgeIngestionPipeline
-from tests.v1.conftest import CORPUS, ROOT
+from tests.v1.conftest import ROOT
 
 
 @pytest.fixture(scope="session")
@@ -27,8 +27,8 @@ def test_v11_adds_concepts_and_leaves_v10_alone(ontology, ontology_v11):
     assert map_relation(ontology_v11, "SENT_TO", "Person", "Document").status is MapStatus.TYPE_VIOLATION
 
 
-def test_v11_puts_action_items_and_recipients_in_the_graph(kg, atlas_settings, ontology_v11):
-    report = KnowledgeIngestionPipeline(kg, atlas_settings, ontology_v11).ingest(CORPUS)
+def test_v11_puts_action_items_and_recipients_in_the_graph(kg, atlas_settings, ontology_v11, phase1_corpus):
+    report = KnowledgeIngestionPipeline(kg, atlas_settings, ontology_v11).ingest(phase1_corpus)
     assert report.stats["documents_processed"] == 6
     with Session(kg) as s:
         q = GraphQueries(s)
@@ -51,12 +51,12 @@ def test_v11_puts_action_items_and_recipients_in_the_graph(kg, atlas_settings, o
         assert q.stats()["unsupported_edges"] == 0
 
 
-def test_upgrade_from_v10_to_v11_keeps_history(kg, atlas_settings, ontology, ontology_v11):
-    KnowledgeIngestionPipeline(kg, atlas_settings, ontology).ingest(CORPUS)
+def test_upgrade_from_v10_to_v11_keeps_history(kg, atlas_settings, ontology, ontology_v11, phase1_corpus):
+    KnowledgeIngestionPipeline(kg, atlas_settings, ontology).ingest(phase1_corpus)
     with Session(kg) as s:
         people_before = {e.id for e in s.execute(select(Entity).where(Entity.entity_type == "Person")).scalars()}
         edges_before = {e.id: e.ontology_version for e in s.execute(select(Edge)).scalars()}
-    report = KnowledgeIngestionPipeline(kg, atlas_settings, ontology_v11).ingest(CORPUS)
+    report = KnowledgeIngestionPipeline(kg, atlas_settings, ontology_v11).ingest(phase1_corpus)
     assert report.stats["reviews_auto_resolved_by_ontology"] == 2
     assert report.stats["documents_processed"] == 6           # reprocessed under the new ontology
     assert report.stats["review_items_opened"] == 0            # reprocessing never flags a doc against itself
