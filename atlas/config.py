@@ -11,9 +11,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT = Path(__file__).resolve().parents[1]
 
-PIPELINE_VERSION = "1.2.2-phase2"
+PIPELINE_VERSION = "1.3.0-phase2"
 NORMALIZER_VERSION = "1.1.0"
-STRUCTURED_EXTRACTOR_VERSION = "1.2.1"
+STRUCTURED_EXTRACTOR_VERSION = "1.3.0"
 RESOLVER_VERSION = "1.1.0"
 
 
@@ -23,7 +23,7 @@ class Settings(BaseSettings):
 
     database_url: str = Field(default="postgresql+psycopg://brain:brain@localhost:5433/brain",
                               validation_alias="DATABASE_URL")
-    ontology_dir: Path = ROOT / "ontology" / "v1_2"
+    ontology_dir: Path = ROOT / "ontology" / "v1_3"
     # Our own email domains: organizations on these domains get is_internal = true.
     internal_domains: list[str] = Field(default_factory=list)
 

@@ -1,0 +1,80 @@
+# Ontology V1.3 — Deterministic policies. Thresholds live here, not in code.
+version: "1.3"
+
+provenance_classes:
+  STRUCTURED_SOURCE: {requires: [document_id, source_field]}
+  EXPLICIT_TEXT:     {requires: [document_id, evidence_text]}
+  INFERRED_TEXT:     {requires: [document_id, evidence_text]}
+  HUMAN_CONFIRMED:   {requires: [reviewer]}
+
+# Minimum confidence for automatic acceptance, per provenance class.
+# Below it the fact goes to review (LOW_CONFIDENCE_RELATION), never silently in.
+acceptance:
+  STRUCTURED_SOURCE: 0.60
+  EXPLICIT_TEXT: 0.85
+  INFERRED_TEXT: 1.01      # never auto-accepted in V1.0
+  HUMAN_CONFIRMED: 0.0
+
+# Confidence assigned to facts derived from structured fields, by rule.
+# Configurable trust policy (spec §41): stronger sources get higher values.
+structured_trust:
+  email.from: 1.0                     # Document AUTHORED_BY sender
+  meeting.transcript_speaker: 0.99    # speaker matched to invitee email -> ATTENDED
+  meeting.recorded_by: 0.95           # the recorder was present -> ATTENDED
+  meeting.calendar_invitee: 0.95      # invited -> HAS_PARTICIPANT (not ATTENDED)
+  fathom.team: 0.90                   # recorder's Fathom team -> MEMBER_OF
+  email.recipients: 1.0               # Document SENT_TO recipient (to/cc/bcc headers)         [1.1]
+  meeting.action_item: 0.95           # ActionItem ORIGINATED_IN / ASSIGNED_TO from Fathom     [1.1]
+  document.author: 0.95               # Document AUTHORED_BY author identified by email in      [1.2]
+                                      # structured metadata (e.g. Drive). Name-only file-metadata
+                                      # authors ("Microsoft Office User") never become edges.
+  email_domain_employment: 0.70       # Person WORKS_AT Organization inferred from email domain
+
+# Employment from email domain (spec §59: only when policy allows it).
+email_domain_employment:
+  enabled: true
+  excluded_domains: [gmail.com, googlemail.com, yahoo.com, outlook.com, hotmail.com, live.com,
+                     msn.com, icloud.com, me.com, aol.com, proton.me, protonmail.com, gmx.com,
+                     # consumer ISPs (1.3); subdomains match too (email.msn.com, houston.rr.com)
+                     rr.com, comcast.net, att.net, sbcglobal.net, verizon.net, cox.net, bellsouth.net,
+                     earthlink.net, juno.com, netzero.net, prodigy.net, mindspring.com, excite.com,
+                     charter.net, optonline.net, mac.com]
+  # Bulk / mailing-list / system senders (1.3). Their domain says who runs the
+  # list, not who employs a person, so no WORKS_AT is proposed for them.
+  bulk_senders:
+    local_parts: [noreply, no-reply, no_reply, donotreply, do-not-reply, do_not_reply, newsletter,
+                  newsletters, news, info, alerts, alert, notifications, notification, notify,
+                  mailer-daemon, postmaster, bounce, bounces, listserv, majordomo, mailman, owner,
+                  marketing, promotions, updates, digest, announce, announcements, webmaster,
+                  subscriptions, unsubscribe]
+    local_part_prefixes: [owner-, bounce-, bounces-, return-]
+    local_part_suffixes: [-request, -bounces, -owner, -admin]
+    # First label of a sending subdomain, e.g. mailman.enron.com, lists.acme.com.
+    subdomain_labels: [lists, list, listserv, mailman, majordomo, email, e, em, news, newsletter,
+                       newsletters, info, bounce, bounces, mkt, marketing, reply, updates, alerts,
+                       notifications, mailer]
+
+# Reading email addresses (1.3). See atlas/resolution/email_identity.py.
+email_identity:
+  # One mailbox reached through a company's sub-domains is one person:
+  # pallen@ect.enron.com == pallen@enron.com (identifier `mailbox`). Organizations
+  # are keyed by registrable domain, so ect.enron.com is Enron.
+  mailbox_across_subdomains: true
+  # "First Last" from first.last / first_last / first.m.last addresses when no
+  # header display name is present. flast / lastname addresses are not names.
+  names_from_address: true
+  # Link flast (jadams) and lastname (adams) addresses to the one first.last person
+  # at the same organization they fit. Only when exactly one person fits and no
+  # display name contradicts it; several fits -> POSSIBLE_DUPLICATE review.
+  link_address_patterns: true
+  multi_part_suffixes: [co.uk, org.uk, ac.uk, gov.uk, com.au, net.au, org.au, co.nz, co.jp, co.in,
+                        com.br, com.mx, com.cn, com.sg, co.za, com.ar, co.kr, com.tr]
+
+# Entity resolution thresholds (used by scored matching in later phases).
+resolution:
+  auto_merge: 0.95
+  review_min: 0.80
+
+normalization:
+  corporate_suffixes: [inc, incorporated, corp, corporation, co, company, llc, ltd, limited,
+                       plc, gmbh, ag, sa, bv, nv, pty, lp, llp]

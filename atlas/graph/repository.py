@@ -52,6 +52,15 @@ class GraphRepository:
             EntityExternalId.identifier_type == identifier_type, EntityExternalId.value == value)).scalar_one()
         return owner == entity_id
 
+    def rename(self, entity_id: uuid.UUID, name: str, reason: str) -> None:
+        """Replace a placeholder canonical name (an email handle) with a real one; audited."""
+        entity = self.session.get(Entity, entity_id)
+        if entity.canonical_name == name:
+            return
+        audit(self.session, "entity_renamed", "entity", entity_id, self.run_id,
+              {"from": entity.canonical_name, "to": name, "reason": reason})
+        entity.canonical_name, entity.normalized_name = name, normalize_name(name)
+
     def add_alias(self, entity_id: uuid.UUID, alias: str, source_document_id: uuid.UUID | None) -> None:
         normalized = normalize_name(alias)
         if normalized:

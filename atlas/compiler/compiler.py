@@ -26,6 +26,7 @@ from atlas.ontology.loader import normalize_label, to_relation_key
 from atlas.ontology.mapper import MapStatus, map_entity_type, map_relation
 from atlas.ontology.models import Ontology
 from atlas.ontology.validator import validate_edge, validate_entity
+from atlas.provenance.audit import audit
 from atlas.resolution.identity import MENTION_KEY, IdentityResolver, Outcome
 from atlas.review.service import ReviewService
 
@@ -107,7 +108,7 @@ class GraphCompiler:
             return record("REJECTED", mapped_type=entity_type, reason="entity failed validation"), None
 
         mention_key = None if cand.identifiers else f"{doc.source_system}:{doc.source_external_id}:{cand.local_id}"
-        res = self.resolver.resolve(entity_type, cand.name, cand.identifiers, mention_key)
+        res = self.resolver.resolve(entity_type, cand.name, cand.identifiers, mention_key, cand.properties)
         if res.outcome is Outcome.REVIEW:
             self.reviews.raise_item(
                 res.review_type, f"{res.review_type}:{entity_type}:{sorted(res.identifiers.items()) or (cand.name or '').lower()}:"
@@ -125,12 +126,19 @@ class GraphCompiler:
             for other in res.possible_same_as:
                 self.reviews.raise_item(
                     "POSSIBLE_DUPLICATE", f"POSSIBLE_DUPLICATE:{min(entity_id, other)}:{max(entity_id, other)}",
-                    f"new {entity_type} with identifiers shares a name with an unconfirmed entity",
+                    f"new {entity_type}: {res.reason}",
                     {"entity_type": entity_type, "name": name, "possible_same_as": [str(entity_id), str(other)]},
                     source_document_id=doc.document_id, related_entities=[entity_id, other])
         else:
             entity_id, decision = res.entity_id, "MATCHED"
+            had_name = bool(self.session.get(Entity, entity_id).properties.get("first_name"))
             conflicts = self.repo.enrich(entity_id, cand.properties, roles, doc.document_id)
+            if res.method == "address_pattern":
+                audit(self.session, "identity_linked", "entity", entity_id, self.run_id,
+                      {"method": "address_pattern", "identifiers": res.identifiers, "reason": res.reason,
+                       "document_id": str(doc.document_id)})
+            if not had_name and cand.properties.get("first_name") and cand.name:
+                self.repo.rename(entity_id, cand.name, "name learned from a linked address or display name")
             if conflicts:
                 self.reviews.raise_item(
                     "CONFLICTING_FACT", f"CONFLICTING_FACT:entity:{entity_id}:{sorted(conflicts)}",

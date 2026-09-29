@@ -127,6 +127,31 @@ def entity(name: str) -> None:
 
 
 @app.command()
+def view(name: str = typer.Argument(None, help="Entity name or email to center on; omit for the people network."),
+         out: str = typer.Option("graph.html", "--out"),
+         depth: int = typer.Option(2, help="Hops from the entity."),
+         fanout: int = typer.Option(25, help="Max edges expanded per node (most recent first)."),
+         top: int = typer.Option(60, help="People in the network view.")) -> None:
+    """Write an interactive HTML view of the graph."""
+    from pathlib import Path
+
+    from atlas.graph.view import neighborhood, people_network, render_html
+
+    with session_scope() as s:
+        if name:
+            q = GraphQueries(s)
+            found = q.find_entity(identifier=("email", name)) if "@" in name else q.find_entity(name=name)
+            if not found:
+                typer.echo("not found")
+                raise typer.Exit(1)
+            graph, title = neighborhood(s, found[0]["id"], depth, fanout), f"Atlas: {found[0]['canonical_name']}"
+        else:
+            graph, title = people_network(s, top), "Atlas: people network"
+    Path(out).write_text(render_html(graph, title))
+    typer.echo(f"{len(graph['nodes'])} nodes, {len(graph['edges'])} edges -> {out}")
+
+
+@app.command()
 def reviews(status: str = typer.Option("OPEN"), review_type: str = typer.Option(None, "--type")) -> None:
     """List review items (most frequent first)."""
     with session_scope() as s:

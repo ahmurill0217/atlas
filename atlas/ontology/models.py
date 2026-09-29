@@ -58,6 +58,7 @@ class Policies(_Frozen):
     acceptance: dict[str, float] = Field(default_factory=dict)
     structured_trust: dict[str, float] = Field(default_factory=dict)
     email_domain_employment: dict = Field(default_factory=dict)
+    email_identity: dict = Field(default_factory=dict)
     resolution: dict[str, float] = Field(default_factory=dict)
     normalization: dict = Field(default_factory=dict)
 

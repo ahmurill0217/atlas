@@ -7,10 +7,14 @@ rules encoded here:
   - spoke in / recorded it -> Person ATTENDED Meeting          (evidence of presence)
   - email sender          -> Document AUTHORED_BY Person
   - email domain          -> Person WORKS_AT Organization, only when the trust
-                             policy enables it and the domain is not generic
+                             policy enables it, the domain is not generic and the
+                             address is not a bulk / mailing-list sender [ontology 1.3]
   - email to/cc/bcc       -> Document SENT_TO Person (recipient_type)          [ontology 1.1]
   - meeting action item   -> ActionItem ORIGINATED_IN Meeting, ASSIGNED_TO Person [ontology 1.1]
   - document author/creator with an email -> Document AUTHORED_BY Person          [ontology 1.2]
+  - email address -> Person identity [ontology 1.3]: `mailbox` identifier at the
+    registrable domain (pallen@ect.enron.com == pallen@enron.com); "First Last" from a
+    display name or a first.last address; organizations keyed by registrable domain
   - document owner / editor / viewer (e.g. Drive): kept as document metadata only
     (governance decision 2026-09-28), no edges proposed
 The extractor proposes the same candidates whatever the ontology version; under
@@ -26,6 +30,13 @@ from atlas.config import STRUCTURED_EXTRACTOR_VERSION
 from atlas.extraction.candidates import CandidateEdge, CandidateEntity, CandidateSet, EvidenceRef
 from atlas.ingestion.normalized import NormalizedDocument, Participant
 from atlas.ontology.models import Ontology
+from atlas.resolution.email_identity import (
+    display_name,
+    name_from_display,
+    name_from_local,
+    registrable_domain,
+    split_address,
+)
 from atlas.resolution.normalize import domain_of, normalize_name
 
 EXTRACTOR = "structured"
@@ -41,7 +52,10 @@ class StructuredExtractor:
         policy = ontology.policies.email_domain_employment
         self.domain_employment = bool(policy.get("enabled"))
         self.excluded_domains = {d.lower() for d in policy.get("excluded_domains", [])}
-        self.internal_domains = {d.lower() for d in (internal_domains or [])}
+        self.bulk = policy.get("bulk_senders") or {}
+        self.email_identity = ontology.policies.email_identity
+        self.suffixes = self.email_identity.get("multi_part_suffixes", [])
+        self.internal_domains = {self.org_domain(d.lower()) for d in (internal_domains or [])}
 
     def extract(self, doc: NormalizedDocument, document_version_id: uuid.UUID) -> CandidateSet:
         out = CandidateSet(document_id=doc.document_id, document_version_id=document_version_id,
@@ -111,32 +125,67 @@ class StructuredExtractor:
                  "created_at": created, "uri": doc.uri,
                  "mime_type": doc.metadata.get("mime_type") or MIME_TYPES.get(doc.source_type)}
         return self._add(CandidateEntity(local_id="document", suggested_type="Document",
-                                         name=doc.title or doc.source_external_id, identifiers={"source_id": source_id},
+                                         name=doc.title or ("(no subject)" if doc.source_type == "email"
+                                                            else doc.source_external_id),
+                                         identifiers={"source_id": source_id},
                                          properties={k: v for k, v in props.items() if v is not None},
                                          **self._base("message_id" if doc.source_type == "email" else "uri")))
 
     def _person(self, p: Participant) -> str:
+        ids, props, name = {}, {}, p.name
         if p.email:
             local_id = f"person:email:{p.email}"
-            ids, props = {"email": p.email}, {"email": p.email}
+            local, domain = split_address(p.email)
+            ids["email"] = p.email
+            bulk = self.is_bulk_sender(p.email)       # lists / system senders: no name, no linking
+            if self.email_identity.get("mailbox_across_subdomains") and not bulk \
+                    and not self.is_generic_domain(domain):
+                ids["mailbox"] = f"{local}@{self.org_domain(domain)}"
+            parsed = None if bulk else name_from_display(p.name) or (
+                name_from_local(local) if self.email_identity.get("names_from_address") else None)
+            if parsed:
+                name = display_name(*parsed)
+                props = dict(zip(("first_name", "last_name"), name.split(" ", 1)))
+            name = name or local
         else:
             local_id = f"person:name:{normalize_name(p.name or 'unknown')}"
-            ids, props = {}, {}
-        name = p.name or (p.email.split("@")[0] if p.email else None)
+        aliases = sorted({a for a in (p.name, name) if a})
         return self._add(CandidateEntity(local_id=local_id, suggested_type="Person", name=name, identifiers=ids,
-                                         properties=props, aliases=[p.name] if p.name else [],
-                                         **self._base(p.source_field)))
+                                         properties=props, aliases=aliases, **self._base(p.source_field)))
+
+    def org_domain(self, domain: str) -> str:
+        if not self.email_identity.get("mailbox_across_subdomains"):
+            return domain
+        return registrable_domain(domain, self.suffixes)
 
     def _employment(self, p: Participant, person_id: str) -> None:
         domain = domain_of(p.email) if p.email else None
-        if not (self.domain_employment and domain) or domain in self.excluded_domains:
+        if not (self.domain_employment and domain) or self.is_generic_domain(domain):
             return
+        if self.is_bulk_sender(p.email):
+            return
+        org = self.org_domain(domain)
         org_id = self._add(CandidateEntity(
-            local_id=f"org:domain:{domain}", suggested_type="Organization", name=domain,
-            identifiers={"domain": domain},
-            properties={"domain": domain, "is_internal": domain in self.internal_domains},
+            local_id=f"org:domain:{org}", suggested_type="Organization", name=org,
+            identifiers={"domain": org},
+            properties={"domain": org, "is_internal": org in self.internal_domains},
             **self._base(f"{p.source_field}.email")))
-        self._edge(person_id, org_id, "WORKS_AT", f"{p.source_field}.email", "email_domain_employment")
+        self._edge(person_id, org_id, "WORKS_AT", f"{p.source_field}.email", "email_domain_employment",
+                   properties={"email_domain": domain} if domain != org else None)
+
+    def is_generic_domain(self, domain: str) -> bool:
+        """Consumer mail providers, including their subdomains (email.msn.com)."""
+        return any(domain == d or domain.endswith("." + d) for d in self.excluded_domains)
+
+    def is_bulk_sender(self, email: str) -> bool:
+        """Mailing-list, newsletter and system addresses (policy `bulk_senders`)."""
+        local, _, domain = email.lower().partition("@")
+        b = self.bulk
+        labels = domain.split(".")
+        return (local in b.get("local_parts", [])
+                or local.startswith(tuple(b.get("local_part_prefixes", [])))
+                or local.endswith(tuple(b.get("local_part_suffixes", [])))
+                or (len(labels) > 2 and labels[0] in b.get("subdomain_labels", [])))
 
     # --- edges -----------------------------------------------------------------
 

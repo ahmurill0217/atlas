@@ -40,11 +40,11 @@ def organization_key(name: str, corporate_suffixes: list[str]) -> str:
 # Identifier types that are case-insensitive by nature. Everything else is a
 # source-native id (Drive file ids, Gmail message ids, paths, meeting ids) and
 # is case-SENSITIVE: lowercasing could merge two different objects.
-CASE_INSENSITIVE_IDENTIFIERS = {"email", "domain", "team_key"}
+CASE_INSENSITIVE_IDENTIFIERS = {"email", "domain", "team_key", "mailbox"}
 
 
 def normalize_identifier(identifier_type: str, value: str) -> str:
-    if identifier_type == "email":
+    if identifier_type in ("email", "mailbox"):
         return normalize_email(value)
     if identifier_type == "domain":
         return normalize_domain(value)
