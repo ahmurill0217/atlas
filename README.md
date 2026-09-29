@@ -14,6 +14,9 @@ Atlas is a knowledge graph over a company's email, documents and meetings (Gmail
 | Content | what was said, proposed, decided | brain (search + LLM) |
 | Mixed | call prep, "who is X and what do they work on" | both, in two labelled sections |
 
+- **Names as people write them:** "Sarah" becomes the Sarah you email most, and the answer says so.
+- **No guessing on ambiguous names:** if two Sarahs are close, `atlas ask` returns the candidates as a clarifying question (route `clarify`).
+
 Every claim cites the email it comes from:
 
 ```

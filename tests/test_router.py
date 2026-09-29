@@ -12,9 +12,64 @@ def _ctx(with_entity: bool = True) -> GraphContext:
     return ctx
 
 
-def test_no_entities_means_content_without_a_model_call():
-    decision = router.classify("What happened with the Bishop's Corner partnership?", _ctx(False), settings=None)
-    assert decision.route is router.Route.CONTENT
+def _read(route, people=(), organizations=()):
+    return lambda q, st: router.Understanding(route=route, reason="r", people=list(people),
+                                              organizations=list(organizations))
+
+
+def _never(*a, **kw):
+    raise AssertionError("must not be called")
+
+
+def _brain(q, ctx, st, **kw):
+    return {"answer": "They discussed ICE [[1]]().", "error": None, "tokens": None,
+            "citations": [{"marker": "1", "source": "search", "document_id": "doc-9", "title": "RE: ICE", "date": None}]}
+
+
+def test_an_ambiguous_name_is_asked_about_not_answered(monkeypatch):
+    ctx = GraphContext(ambiguous=[{"mention": "Sarah", "type": "Person", "relative_to_asker": True, "candidates": [
+        {"name": "Sarah Chen", "email": "sarah.chen@acme.com", "organization": "acme.com", "emails": 4},
+        {"name": "Sarah Park", "email": "sarah.park@globex.com", "organization": "globex.com", "emails": 3}]}])
+    monkeypatch.setattr(router, "understand", _read(router.Route.MIXED))
+    monkeypatch.setattr(router, "graph_context", lambda s, q, **kw: ctx)
+    monkeypatch.setattr(router, "graph_answer", _never)
+    monkeypatch.setattr(router, "brain_answer", _never)
+    out = router.ask("Prep me for my call with Sarah", settings=object(), asker="me@x.com")
+    assert out["route"] == "clarify" and out["clarify"][0]["candidates"][1]["name"] == "Sarah Park"
+    assert out["answer"].startswith('Which person do you mean by "Sarah"?')
+    assert "1. Sarah Chen <sarah.chen@acme.com>, acme.com (4 emails with you)" in out["answer"]
+
+
+def test_nobody_linked_falls_back_to_content_and_says_so(monkeypatch):
+    monkeypatch.setattr(router, "understand", _read(router.Route.MIXED))
+    monkeypatch.setattr(router, "graph_context", lambda s, q, **kw: _ctx(False))
+    monkeypatch.setattr(router, "graph_answer", _never)
+    monkeypatch.setattr(router, "brain_answer", _brain)
+    out = router.ask("How did the Bishop's Corner buyout go?", settings=object())
+    assert out["route"] == "content" and out["fallback"].startswith("nobody the question names")
+    assert out["answer"].startswith("_Note: Answered from email search only:")
+
+
+def test_graph_that_cannot_answer_falls_back_to_content(monkeypatch):
+    monkeypatch.setattr(router, "understand", _read(router.Route.RELATIONSHIP))
+    monkeypatch.setattr(router, "graph_context", lambda s, q, **kw: _ctx())
+    monkeypatch.setattr(router, "graph_answer",
+                        lambda q, ctx, st, part=False: router.GraphAnswer(answer="The facts do not say.", answered=False))
+    monkeypatch.setattr(router, "brain_answer", _brain)
+    out = router.ask("Who did Keith Holst introduce us to?", settings=object())
+    assert out["route"] == "content" and "do not answer" in out["fallback"]
+    assert [c["document_id"] for c in out["citations"]] == ["doc-9"]
+
+
+def test_assumptions_are_stated_above_the_answer(monkeypatch):
+    ctx = _ctx()
+    ctx.notes = ['Took "Keith" to mean Keith Holst <keith.holst@enron.com>; ask again with a full name if not.']
+    monkeypatch.setattr(router, "understand", _read(router.Route.RELATIONSHIP))
+    monkeypatch.setattr(router, "graph_context", lambda s, q, **kw: ctx)
+    monkeypatch.setattr(router, "graph_answer",
+                        lambda q, ctx, st, part=False: router.GraphAnswer(answer="Last 2001-05-14 [G1].", answered=True))
+    out = router.ask("When did I last talk to Keith?", settings=object())
+    assert out["answer"] == f"_Note: {ctx.notes[0]}_\n\nLast 2001-05-14 [G1]."
 
 
 def test_graph_citations_are_the_markers_the_answer_used():
@@ -25,11 +80,10 @@ def test_graph_citations_are_the_markers_the_answer_used():
 
 def test_mixed_questions_keep_both_answers_and_both_kinds_of_source(monkeypatch):
     monkeypatch.setattr(router, "graph_context", lambda s, q, **kw: _ctx())
-    monkeypatch.setattr(router, "classify", lambda q, ctx, st: router.RouteDecision(route=router.Route.MIXED, reason="r"))
-    monkeypatch.setattr(router, "graph_answer", lambda q, ctx, st, part=False: "- Keith Holst, last contact 2001-05-14 [G1]")
-    monkeypatch.setattr(router, "brain_answer", lambda q, ctx, st, **kw: {
-        "answer": "They discussed ICE [[1]]().", "error": None, "tokens": None,
-        "citations": [{"marker": "1", "source": "search", "document_id": "doc-9", "title": "RE: ICE", "date": None}]})
+    monkeypatch.setattr(router, "understand", _read(router.Route.MIXED))
+    monkeypatch.setattr(router, "graph_answer", lambda q, ctx, st, part=False: router.GraphAnswer(
+        answer="- Keith Holst, last contact 2001-05-14 [G1]", answered=True))
+    monkeypatch.setattr(router, "brain_answer", _brain)
     out = router.ask("Prep me for a call with Keith Holst", settings=object())
     assert out["route"] == "mixed"
     assert out["answer"].startswith("**From the relationship graph**") and "**From the emails**" in out["answer"]
@@ -37,8 +91,10 @@ def test_mixed_questions_keep_both_answers_and_both_kinds_of_source(monkeypatch)
 
 
 def test_relationship_route_cites_graph_sources(monkeypatch):
+    monkeypatch.setattr(router, "understand", _read(router.Route.CONTENT))   # the mode overrides the route
     monkeypatch.setattr(router, "graph_context", lambda s, q, **kw: _ctx())
-    monkeypatch.setattr(router, "graph_answer", lambda q, ctx, st, part=False: "Last contact 2001-05-14 [G1].")
+    monkeypatch.setattr(router, "graph_answer", lambda q, ctx, st, part=False: router.GraphAnswer(
+        answer="Last contact 2001-05-14 [G1].", answered=True))
     out = router.ask("When did I last talk to Keith Holst?", mode="relationship", settings=object())
     assert out["route"] == "relationship" and [c["document_id"] for c in out["citations"]] == ["doc-1"]
 

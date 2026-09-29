@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from atlas.ontology import load_ontology
 from atlas.pipeline import KnowledgeIngestionPipeline
-from atlas.retrieval.ask import graph_context
+from atlas.retrieval.ask import OrgMention, PersonMention, graph_context
 from tests.conftest import ROOT
 
 
@@ -48,7 +48,7 @@ def test_unknown_names_link_nothing(mailbox):
     assert ctx.entities == [] and ctx.facts == ""
 
 
-def test_a_single_word_never_links_a_person(mailbox):
+def test_a_single_word_in_the_text_never_links_a_person(mailbox):
     with Session(mailbox) as s:
         assert graph_context(s, "Prep me for a call with Keith.").entities == []
         assert graph_context(s, "What did Holst say about Bishops Corner?").entities == []
@@ -70,7 +70,8 @@ def test_relationship_facts(kg, atlas_settings, tmp_path):
         arnold = graph_context(s, "When did John Arnold and Steve Lafontaine last talk?")
     assert {e.name for e in bofa.entities} == {"John Arnold", "bankofamerica.com"}
     assert ("People at bankofamerica.com who have dealt with John Arnold (1 addresses; one person may use several): "
-            "Steve Lafontaine <steve.lafontaine@bankofamerica.com> (2 emails, 2001-05-04 to 2001-12-11 [G1])") in bofa.facts
+            "Steve Lafontaine <steve.lafontaine@bankofamerica.com> (2 emails, 2001-05-04 to 2001-12-11 [G1]; "
+            "John Arnold wrote to them 1, they wrote to John Arnold 1)") in bofa.facts
     assert "Mike Grigsby and Steve Lafontaine: no emails or meetings together in the corpus." in pair.facts
     assert ("John Arnold wrote to Steve Lafontaine 1 times, last 2001-05-04 [G2]; Steve Lafontaine wrote to "
             "John Arnold 1 times, last 2001-12-11 [G1]. First email with both on it 2001-05-04 [G2], "
@@ -101,3 +102,76 @@ def test_copied_on_the_same_email_is_not_writing_to_each_other(kg, atlas_setting
     assert "last 2001-05-14" in line.split("First email with both on it")[1]      # the list email, labelled as such
     assert mine.facts.startswith('- The person asking is Phillip Allen (phillip.allen@enron.com)')
     assert "Phillip Allen and Keith Holst" in mine.facts
+
+
+@pytest.fixture
+def contacts(kg, atlas_settings, tmp_path):
+    msgs = [("phillip.allen@enron.com", ["sarah.chen@acme.com"], "q1"),
+            ("sarah.chen@acme.com", ["phillip.allen@enron.com"], "re: q1"),
+            ("phillip.allen@enron.com", ["sarah.chen@acme.com"], "q2"),
+            ("keith.holst@enron.com", ["sarah.park@globex.com"], "hello"),
+            ("sarah.park@globex.com", ["keith.holst@enron.com"], "re: hello"),
+            ("keith.holst@enron.com", ["sarah.chen@acme.com"], "intro"),
+            ("phillip.allen@enron.com", ["tom.reed@alloytx.com"], "contract"),
+            ("tom.lee@enron.com", ["phillip.allen@enron.com"], "lunch")]
+    for i, (sender, to, subject) in enumerate(msgs):
+        (tmp_path / f"{i}.json").write_text(json.dumps({"source_system": "test", "message_id": f"n{i}", "from": sender,
+                                                        "to": to, "subject": subject,
+                                                        "date": f"2001-03-{10 + i}T10:00:00Z", "body": "x"}))
+    settings = atlas_settings.model_copy(update={"internal_domains": ["enron.com"]})
+    KnowledgeIngestionPipeline(kg, settings, load_ontology(str(ROOT / "ontology"))).ingest(tmp_path)
+    return kg
+
+
+def _person(name, organization=None):
+    return PersonMention(name=name, organization=organization)
+
+
+def test_a_first_name_links_the_one_the_asker_emails_most_and_says_so(contacts):
+    with Session(contacts) as s:
+        ctx = graph_context(s, "Prep me for my call with Sarah", asker_email="phillip.allen@enron.com",
+                            people=[_person("Sarah")])
+    assert [e.name for e in ctx.entities] == ["Phillip Allen", "Sarah Chen"] and not ctx.ambiguous
+    assert ctx.notes == ['Took "Sarah" to mean Sarah Chen <sarah.chen@acme.com>, the match you email most; '
+                         "ask again with a full name or email address if not."]
+    assert '- In the question, "Sarah" means Sarah Chen.' in ctx.facts
+
+
+def test_close_candidates_are_returned_for_a_clarifying_question(contacts):
+    with Session(contacts) as s:
+        ctx = graph_context(s, "Prep me for my call with Sarah", asker_email="keith.holst@enron.com",
+                            people=[_person("Sarah")])
+    assert ctx.facts == "" and ctx.ambiguous[0]["mention"] == "Sarah"
+    assert [(c["name"], c["organization"], c["emails"]) for c in ctx.ambiguous[0]["candidates"]] == [
+        ("Sarah Park", "globex.com", 2), ("Sarah Chen", "acme.com", 1)]
+
+
+def test_a_company_narrows_a_first_name(contacts):
+    with Session(contacts) as s:
+        alone = graph_context(s, "What did Tom send?", asker_email="phillip.allen@enron.com", people=[_person("Tom")])
+        at_alloy = graph_context(s, "What did Tom from Alloy Therapeutics send?", asker_email="phillip.allen@enron.com",
+                                 people=[_person("Tom", "Alloy Therapeutics")],
+                                 organizations=[OrgMention(name="Alloy Therapeutics", full_name=None)])
+    assert {c["name"] for c in alone.ambiguous[0]["candidates"]} == {"Tom Reed", "Tom Lee"}
+    assert {e.name for e in at_alloy.entities} == {"Phillip Allen", "alloytx.com", "Tom Reed"}
+    assert any(n.startswith('Took "Alloy Therapeutics" to mean alloytx.com') for n in at_alloy.notes)
+
+
+def test_a_bare_name_does_not_shadow_first_names(contacts, kg):
+    """Senders named just "sarah" exist in real mail; they must not hide Sarah Chen."""
+    import uuid
+    from sqlalchemy import text
+    with Session(kg) as s:
+        s.execute(text("""INSERT INTO kg.entities SELECT (jsonb_populate_record(NULL::kg.entities, to_jsonb(e)
+                          || jsonb_build_object('id', CAST(:i AS text), 'canonical_name', 'sarah',
+                                                'normalized_name', 'sarah'))).*
+                          FROM kg.entities e WHERE e.entity_type = 'Person' LIMIT 1"""), {"i": str(uuid.uuid4())})
+        s.commit()
+        ctx = graph_context(s, "Prep me for Sarah", asker_email="phillip.allen@enron.com", people=[_person("Sarah")])
+    assert "Sarah Chen" in [e.name for e in ctx.entities]
+
+
+def test_a_name_nobody_has_is_noted_not_guessed(contacts):
+    with Session(contacts) as s:
+        ctx = graph_context(s, "Prep me for a call with Zed", people=[_person("Zed")])
+    assert ctx.entities == [] and ctx.notes == ['No one called "Zed" appears in the email metadata.']

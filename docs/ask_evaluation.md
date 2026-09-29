@@ -160,6 +160,36 @@ Next: a router in `atlas ask` that sends each question (or each part of it) to t
   - Most of its unsupported search citations are **true facts attached to the wrong email**: a quote that exists in "RE: wheres the love?" cited to "stuff"; the Prebon trade confirmation cited to the party invite. The model (gpt-4o-mini) wrote the wrong citation number.
 - **Plain retrieval, 53% verified** (21 of 40). Its unsupported citations are mostly **generalizations the emails don't contain** ("reflects a collaborative approach…" cited to fantasy-football transaction emails).
 
+### Names as people write them (round 4)
+
+The question sets above name everyone in full. Real questions say "Sarah", "bofa", "Frank".
+
+- **Reading the question:** the classification call now also returns the people and companies named, as written, and spells out well-known abbreviations ("BofA" -> Bank of America).
+- **Linking them:**
+  - Candidates come by first name, name, address or domain prefix, ranked by how much the asker has emailed each.
+  - A clear leader (at least 3x the next) is linked, and the answer says so at the top ("Took "Steve" to mean Steve Lafontaine <...>").
+  - Otherwise nothing is answered. The result is route `clarify`, with the candidates, so the caller can ask "which Sarah?".
+  - A name nobody has is noted, not guessed.
+- **Fallbacks:** a mixed question in which nobody was linked, and a relationship question the facts don't answer, go to search, and the answer says so.
+
+**Casual questions tried on Enron:**
+
+| Question | Result |
+|---|---|
+| "When did I last email Steve?" (as Arnold) | Steve Lafontaine, cited |
+| "Who at bofa have I dealt with?" | bankofamerica.com, via the spelled-out name |
+| "What do I know about Mike?" (as Allen) | Mike Grigsby |
+| "Prep me for my call with Jennifer" (as Arnold) | Jennifer Fraser |
+| "Did Frank ever email the Dynegy people?" (as Allen) | Frank Ermis; "0 times": Dynegy's notices went to him |
+
+**Problems found on the way, now fixed:**
+- Senders named just "mike" or "'frank" won an exact-name match and hid the real people.
+- "bofa" matched bofasecurities.com by prefix.
+- Graph answers lost their citations under structured output.
+- "People at a company who dealt with X" had no direction, so the model said Frank emailed Dynegy.
+
+The relationship set re-run in auto mode (`relationships_v3.json`): all 10 answered from the graph with citations. Quality is as before.
+
 ### Next
 
 1. **Verify citations at answer time.** Run the audit check live: keep a supported citation; re-point a wrong-number citation to the retrieved email that does support the sentence; flag what nothing supports.

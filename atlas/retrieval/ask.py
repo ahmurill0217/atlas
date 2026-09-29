@@ -1,11 +1,17 @@
 """The graph side of `atlas ask`: link the people and companies a question names,
 and describe them from email metadata. Routing and answering: atlas/retrieval/router.py.
 
-  1. link   people / organizations named in the question to graph entities.
-            Conservative: a person needs a full name, alias or email address (a
-            single word like "Bob" never links a person); capitalized words may
-            link a company whose domain label they spell ("Prebon" -> prebon.com,
-            "Bank of America" -> bankofamerica.com). Uncertain -> no link.
+  1. link   people / organizations named in the question to graph entities, two ways:
+            - from the question text, exactly: a full name, alias or email address
+              for a person (a single word like "Bob" never links this way);
+              capitalized words for a company whose domain label they spell
+              ("Prebon" -> prebon.com, "Bank of America" -> bankofamerica.com);
+            - from the mentions the router's model read in the question ("Sarah",
+              "Tom from Alloy"): candidates by first name, name or domain prefix,
+              ranked by how much the asker has emailed each. A clear leader is
+              linked and noted as an assumption; otherwise the candidates are
+              returned for a clarifying question ("Do you mean Sarah Chen at
+              acme.com?"), and nothing is answered from a guess.
             `asker_email` (the person asking) makes "I / we / you" resolve.
   2. facts  a metadata profile per entity (addresses, employer, volume, active
             period, frequent correspondents inside and outside the organization
@@ -25,6 +31,7 @@ import re
 import uuid
 from dataclasses import dataclass, field
 
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -52,6 +59,11 @@ class GraphContext:
     facts: str = ""
     # Emails that show the facts, cited as [G1], [G2], ...: marker -> document id, title, date.
     sources: dict[str, dict] = field(default_factory=dict)
+    # For the reader: assumptions made in linking a mention, and mentions nobody in the graph matches.
+    notes: list[str] = field(default_factory=list)
+    # Mentions with several close candidates: {"mention", "type", "candidates": [...]}. Non-empty
+    # means ask the user which one they mean; no facts are built.
+    ambiguous: list[dict] = field(default_factory=list)
 
     def cite(self, s: Session, document_entity_id) -> str:
         """Marker for the email behind a fact (a graph Document entity), e.g. "[G3]"; "" if unknown."""
@@ -123,6 +135,177 @@ def link_entities(s: Session, question: str) -> list[LinkedEntity]:
         if len(rows) == 1:
             add(rows[0], gram)
     return list(found.values())
+
+
+class PersonMention(BaseModel):
+    name: str                      # as written: "Sarah", "Sarah Chen", "sarah.chen@acme.com"
+    organization: str | None       # as written, when the question ties them to one: "Tom from Alloy"
+
+
+class OrgMention(BaseModel):
+    name: str                      # as written: "Acme", "BofA"
+    full_name: str | None          # a well-known abbreviation spelled out: "BofA" -> "Bank of America"
+
+
+_COMM = "'AUTHORED_BY', 'SENT_TO', 'HAS_PARTICIPANT', 'ATTENDED'"
+_ENTITY = "SELECT DISTINCT e.id, e.entity_type, e.canonical_name, e.properties FROM kg.entities e"
+ASKER = "the person asking (I / we / you)"
+# A candidate is taken without asking when it has at least this many times the emails of the next one.
+LEAD = 3
+
+
+def _linked(row, matched: str) -> LinkedEntity:
+    return LinkedEntity(row.id, row.entity_type, row.canonical_name, matched,
+                        bool((row.properties or {}).get("is_internal")))
+
+
+def _person_candidates(s: Session, key: str) -> tuple[list, bool]:
+    """(people, partial). A full name: an exact name or alias match, else people with that last
+    name and a first name one is a prefix of ("Steve Lafontaine" -> Steven Lafontaine). One word:
+    everyone with it as their name or first name, by name, alias or address ("sarah" ->
+    sarah.chen@); an exact match alone is not enough, as senders named just "mike" exist."""
+    words = key.split()
+    if len(words) == 1:
+        return s.execute(text(_ENTITY + """ LEFT JOIN kg.entity_aliases a ON a.entity_id = e.id
+            WHERE e.status = 'active' AND e.entity_type = 'Person'
+              AND (e.normalized_name = :k OR a.normalized_alias = :k
+                   OR e.normalized_name LIKE :k || ' %' OR a.normalized_alias LIKE :k || ' %'
+                   OR EXISTS (SELECT 1 FROM kg.entity_external_ids x WHERE x.entity_id = e.id
+                              AND x.identifier_type = 'email'
+                              AND split_part(split_part(x.value, '@', 1), '.', 1) = :k))"""),
+                         {"k": key}).all(), True
+    rows = s.execute(text(_ENTITY + """ LEFT JOIN kg.entity_aliases a ON a.entity_id = e.id
+        WHERE e.status = 'active' AND e.entity_type = 'Person'
+          AND (e.normalized_name = :k OR a.normalized_alias = :k)"""), {"k": key}).all()
+    if rows:
+        return rows, False
+    return s.execute(text(_ENTITY + """ WHERE e.status = 'active' AND e.entity_type = 'Person'
+          AND e.normalized_name LIKE '% ' || :last
+          AND (split_part(e.normalized_name, ' ', 1) LIKE :first || '%'
+               OR :first LIKE split_part(e.normalized_name, ' ', 1) || '%')"""),
+                     {"first": words[0], "last": words[-1]}).all(), True
+
+
+def _org_candidates(s: Session, key: str) -> tuple[list, bool]:
+    """(organizations, partial): an exact name, alias or domain label ("bank of america" ->
+    bankofamerica.com), else domains starting with the first word ("alloy therapeutics" -> alloytx.com)."""
+    rows = s.execute(text(_ENTITY + """ LEFT JOIN kg.entity_aliases a ON a.entity_id = e.id
+        WHERE e.status = 'active' AND e.entity_type = 'Organization'
+          AND (e.normalized_name = :k OR a.normalized_alias = :k
+               OR EXISTS (SELECT 1 FROM kg.entity_external_ids x WHERE x.entity_id = e.id
+                          AND x.identifier_type = 'domain' AND split_part(x.value, '.', 1) = :label))"""),
+                     {"k": key, "label": key.replace(" ", "")}).all()
+    if rows:
+        return rows, False
+    first = key.split()[0]
+    if len(first) < 4:
+        return [], True
+    return s.execute(text(_ENTITY + """ JOIN kg.entity_external_ids x ON x.entity_id = e.id
+        AND x.identifier_type = 'domain'
+        WHERE e.status = 'active' AND e.entity_type = 'Organization'
+          AND split_part(x.value, '.', 1) LIKE :first || '%'"""), {"first": first}).all(), True
+
+
+def _affinity(s: Session, ids: list, asker_id, organizations: bool = False) -> dict:
+    """Emails per candidate: shared with the asker when known, else in total. For organizations,
+    emails with anyone who works there."""
+    target = "w.target_entity_id" if organizations else "eb.target_entity_id"
+    works = ("JOIN kg.edges w ON w.source_entity_id = eb.target_entity_id AND w.relation_type = 'WORKS_AT'"
+             if organizations else "")
+    if asker_id:
+        sql = f"""SELECT {target} AS id, count(DISTINCT eb.source_entity_id) AS n FROM kg.edges ea
+            JOIN kg.edges eb ON eb.source_entity_id = ea.source_entity_id AND eb.relation_type IN ({_COMM})
+            {works}
+            WHERE ea.target_entity_id = :asker AND ea.relation_type IN ({_COMM})
+              AND eb.target_entity_id <> :asker AND {target} = ANY(:ids) GROUP BY 1"""
+    else:
+        sql = f"""SELECT {target} AS id, count(DISTINCT eb.source_entity_id) AS n FROM kg.edges eb {works}
+            WHERE eb.relation_type IN ({_COMM}) AND {target} = ANY(:ids) GROUP BY 1"""
+    return {r.id: r.n for r in s.execute(text(sql), {"ids": ids, "asker": asker_id})}
+
+
+def _candidate(s: Session, row, n: int) -> dict:
+    """What a person needs to tell candidates apart."""
+    if row.entity_type == "Organization":
+        return {"name": row.canonical_name, "emails": n}
+    email = s.execute(text("""SELECT min(value) FROM kg.entity_external_ids WHERE entity_id = :i
+        AND identifier_type = 'email'"""), {"i": row.id}).scalar()
+    org = s.execute(text("""SELECT min(o.canonical_name) FROM kg.edges w JOIN kg.entities o ON o.id = w.target_entity_id
+        WHERE w.source_entity_id = :i AND w.relation_type = 'WORKS_AT'"""), {"i": row.id}).scalar()
+    return {"name": row.canonical_name, "email": email, "organization": org, "emails": n}
+
+
+def _choose(s: Session, ctx: GraphContext, mention: str, rows: list, partial: bool, asker,
+            organizations: bool = False) -> LinkedEntity | None:
+    """Link the one candidate, or a clear leader by emails (noted as an assumption); otherwise
+    record the mention as ambiguous (several) or unknown (none)."""
+    kind = "Organization" if organizations else "Person"
+    rows = list({r.id: r for r in rows if not asker or r.id != asker.id}.values())
+    if not rows:
+        ctx.notes.append(f'No {"company" if organizations else "one"} called "{mention}" appears in the email metadata.')
+        return None
+    scores = _affinity(s, [r.id for r in rows], asker.id if asker else None, organizations)
+    rows.sort(key=lambda r: -scores.get(r.id, 0))
+    first = scores.get(rows[0].id, 0)
+    second = scores.get(rows[1].id, 0) if len(rows) > 1 else 0
+    if len(rows) == 1 or (first > 0 and first >= LEAD * second):
+        chosen = _linked(rows[0], mention)
+        if partial or len(rows) > 1:
+            whose = "you email most" if asker else "with the most email"
+            desc = _candidate(s, rows[0], first)
+            label = f'{desc["name"]} <{desc["email"]}>' if desc.get("email") else desc["name"]
+            ctx.notes.append(f'Took "{mention}" to mean {label}'
+                             + (f", the match {whose}" if len(rows) > 1 else "")
+                             + "; ask again with a full name or email address if not.")
+        return chosen
+    ctx.ambiguous.append({"mention": mention, "type": kind, "relative_to_asker": bool(asker),
+                          "candidates": [_candidate(s, r, scores.get(r.id, 0)) for r in rows[:5]]})
+    return None
+
+
+def resolve_mentions(s: Session, ctx: GraphContext, people: list[PersonMention], organizations: list[OrgMention],
+                     asker: LinkedEntity | None) -> None:
+    """Link the mentions the question-reading model found that the exact linker did not."""
+    def linked(key: str) -> LinkedEntity | None:
+        for e in ctx.entities:
+            for n in (normalize_name(e.matched), normalize_name(e.name)):
+                if key == n or f" {key} " in f" {n} ":
+                    return e
+        return None
+
+    org_ids: dict[str, object] = {}
+    named = {normalize_name(o.name) for o in organizations}
+    orgs = list(organizations) + [OrgMention(name=p.organization, full_name=None) for p in people
+                                  if p.organization and normalize_name(p.organization) not in named]
+    for o in orgs:
+        key = normalize_name(o.name)
+        if not key or "@" in o.name or key in org_ids:
+            continue
+        if (known := linked(key)) is not None:
+            org_ids[key] = known.id
+            continue
+        # The spelled-out name first ("Bank of America" -> bankofamerica.com), then as written.
+        rows, partial = [], True
+        for k in dict.fromkeys(filter(None, [normalize_name(o.full_name or ""), key])):
+            found, loose = _org_candidates(s, k)
+            if found and not loose:
+                rows, partial = found, False
+                break
+            rows = rows or found
+        if (chosen := _choose(s, ctx, o.name, rows, partial, asker, organizations=True)) is not None:
+            ctx.entities.append(chosen)
+            org_ids[key] = chosen.id
+    for p in people:
+        key = normalize_name(p.name)
+        if not key or "@" in p.name or linked(key) is not None:
+            continue
+        rows, partial = _person_candidates(s, key)
+        org_id = org_ids.get(normalize_name(p.organization or ""))
+        if org_id is not None:
+            at_org = set(people_of(s, org_id))
+            rows = [r for r in rows if r.id in at_org] or rows
+        if (chosen := _choose(s, ctx, p.name, rows, partial, asker)) is not None:
+            ctx.entities.append(chosen)
 
 
 def people_of(s: Session, org_id: uuid.UUID) -> list[uuid.UUID]:
@@ -271,13 +454,15 @@ def org_person_facts(s: Session, org: LinkedEntity, person: LinkedEntity, ctx: G
             name = s.execute(text("SELECT canonical_name FROM kg.entities WHERE id = :i"), {"i": pid}).scalar()
             email = s.execute(text("""SELECT min(value) FROM kg.entity_external_ids WHERE entity_id = :i
                 AND identifier_type = 'email'"""), {"i": pid}).scalar()
-            rows.append((r.total, name, email, r.first, r.last, r.last_doc))
+            rows.append((r.total, name, email, r.first, r.last, r.last_doc, r.a_to_b, r.b_to_a))
     if not rows:
         return f"- People at {org.name} who have dealt with {person.name}: none in the corpus."
     rows.sort(key=lambda x: -x[0])
     return (f"- People at {org.name} who have dealt with {person.name} ({len(rows)} addresses; one person may use "
             "several): " + "; ".join(f"{name} <{email}> ({n} emails, {(first or '?')[:10]} to {(last or '?')[:10]}"
-                                     f" {ctx.cite(s, last_doc)})" for n, name, email, first, last, last_doc in rows[:15]))
+                                     f" {ctx.cite(s, last_doc)}; {person.name} wrote to them {sent}, they wrote to "
+                                     f"{person.name} {received})"
+                                     for n, name, email, first, last, last_doc, sent, received in rows[:15]))
 
 
 def link_asker(s: Session, email: str) -> LinkedEntity | None:
@@ -285,21 +470,29 @@ def link_asker(s: Session, email: str) -> LinkedEntity | None:
         JOIN kg.entity_external_ids x ON x.entity_id = e.id
         WHERE x.identifier_type = 'email' AND x.value = :v AND e.status = 'active'"""),
                     {"v": normalize_email(email)}).first()
-    return LinkedEntity(row.id, row.entity_type, row.canonical_name, "the person asking (I / we / you)",
-                        bool((row.properties or {}).get("is_internal"))) if row else None
+    return _linked(row, ASKER) if row else None
 
 
-def graph_context(s: Session, question: str, asker_email: str | None = None) -> GraphContext:
+def graph_context(s: Session, question: str, asker_email: str | None = None,
+                  people: list[PersonMention] = (), organizations: list[OrgMention] = ()) -> GraphContext:
     """`asker_email`: who is asking, so "I", "we" and "you" mean someone. The platform knows this
-    for every question; relationships between the asker and the people named are added."""
+    for every question; relationships between the asker and the people named are added.
+    `people` / `organizations`: mentions read from the question by the router's model. If any is
+    ambiguous, the context carries the candidates and no facts."""
     ctx = GraphContext(entities=link_entities(s, question))
     asker = link_asker(s, asker_email) if asker_email else None
+    resolve_mentions(s, ctx, list(people), list(organizations), asker)
+    if ctx.ambiguous:
+        return ctx
     if asker and all(e.id != asker.id for e in ctx.entities):
         ctx.entities.insert(0, asker)          # pairs read from the asker's side
     people = [e for e in ctx.entities if e.entity_type == "Person"]
     external_orgs = [e for e in ctx.entities if e.entity_type == "Organization" and not e.is_internal]
     facts = [person_facts(s, e, ctx) if e.entity_type == "Person" else org_facts(s, e)
              for e in ctx.entities if not (asker and e.id == asker.id)]
+    facts[:0] = [f'- In the question, "{e.matched}" means {e.name}.' for e in ctx.entities
+                 if e.matched != ASKER and normalize_name(e.matched) != normalize_name(e.name)
+                 and "@" not in e.matched and e.entity_type == "Person"]
     if asker:
         facts.insert(0, f"- The person asking is {asker.name} ({asker_email}); \"I\", \"we\", \"me\" and \"you\" "
                         f"in the question refer to {asker.name}.")

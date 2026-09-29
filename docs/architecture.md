@@ -33,19 +33,23 @@ Atlas (Postgres, schema kg)                         brain (../brain; OpenSearch 
 
 ## Answering (`atlas ask`, `atlas/retrieval/`)
 
-1. **`ask.py`** links the people and companies the question names.
-   - Conservative: full names, aliases and emails for people; domain labels for companies.
+1. **`router.py`** reads the question in one small model call: the route, plus the people and companies it names as written ("Sarah", "Tom from Alloy", "BofA" -> Bank of America).
+2. **`ask.py`** links them to the graph.
+   - Exact full names, aliases, emails and domain labels link directly.
+   - First names and partial names get candidates, ranked by how much the asker has emailed each. A clear leader is linked, and the answer states the assumption.
+   - Close candidates are not guessed: `ask` returns route `clarify` with the candidates, and the caller asks the user ("Do you mean Sarah Chen at acme.com?").
    - The asker (`--as`) resolves I / we / you.
-2. **`ask.py`** builds facts about them from the graph:
+3. **`ask.py`** builds facts about them from the graph:
    - profiles and correspondents;
    - pair facts (who wrote to whom, when);
    - who at a company someone dealt with.
 
    Each fact carries a `[G#]` marker naming an email that shows it.
-3. **`router.py`** classifies the question (one small model call) and answers:
+4. **`router.py`** answers by route:
    - **relationship:** from the facts alone; cites `[G#]`.
    - **content:** brain answers with the profile as context; cites the emails it retrieved.
    - **mixed:** both. The two parts are not merged by a model, because a model overwrites the graph's exact numbers with guesses from the retrieved sample.
+   - **Fallbacks:** a mixed question with nobody linked, or a relationship question the facts don't answer, goes to content, and the answer says so.
 
 ## What the evaluation showed (`docs/ask_evaluation.md`, Enron, 5,000 emails)
 
