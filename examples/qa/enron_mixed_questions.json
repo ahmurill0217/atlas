@@ -1,0 +1,75 @@
+[
+ {
+  "id": "m1",
+  "type": "mixed",
+  "question": "Prep me for a call with Steve Lafontaine.",
+  "key_points": [
+   "graph: Bank of America; 26 emails with John Arnold, 2001-05-04 to 2001-12-11 (also 3 other addresses)",
+   "content: gas market views (spreads, contango, cash strength, more neutral); offered support and urged a call amid Enron rumors (Dec 2001); informal, friendly tone"
+  ]
+ },
+ {
+  "id": "m2",
+  "type": "mixed",
+  "question": "Who is Andy Zipper, who does he work with most, and what is his role?",
+  "key_points": [
+   "graph: Enron; top correspondent John Arnold",
+   "content: in 2001 moving to trade a cross-commodity volatility book (gas, power, maybe weather), sitting with and reporting to John Arnold; earlier EnronOnline / options / Houston Street topics"
+  ]
+ },
+ {
+  "id": "m3",
+  "type": "mixed",
+  "question": "How did the Bishop's Corner buyout go, and who was involved?",
+  "key_points": [
+   "content: George Richards proposed being bought out (~$78,946 incl. management fees), Phillip Allen and Keith thought the fee claim unjustified; agreement to take the items of value (engineering, architecture, survey, appraisal) without paying fees; question about $15,000 extensions",
+   "people: Phillip Allen, Keith Holst, George Richards, Larry, Jacques (jacquestc@aol.com)"
+  ]
+ },
+ {
+  "id": "m4",
+  "type": "mixed",
+  "question": "Prep me for a meeting with Jennifer Fraser: how often do we talk and what does she usually raise?",
+  "key_points": [
+   "graph: 152 emails with John Arnold (she wrote him 21, he wrote her 113), 2000-09-14 to 2001-11-19",
+   "content: natural gas fundamentals and market debate (AGA storage revision, demand destruction), ENE equity concern Oct 2001"
+  ],
+  "as": "john.arnold@enron.com"
+ },
+ {
+  "id": "m5",
+  "type": "mixed",
+  "question": "Who at Prebon has John Arnold dealt with, and what did they discuss?",
+  "key_points": [
+   "graph: jpetriello@prebon.com (2001-11-16) and bschaeffer@prebon.com / Brad Schaeffer (2001-11-29)",
+   "content: Petriello sent a Prebon Energy party invitation; Schaeffer asked to confirm four trades (F01 swaps at 2.69 Oneok/PGE, Cal02 swaps at 2.89 BOA/Calpine); Arnold: Jan confirmed, Cal 2 not yet"
+  ]
+ },
+ {
+  "id": "m6",
+  "type": "mixed",
+  "question": "When did Phillip Allen last email Keith Holst, and what was it about?",
+  "key_points": [
+   "graph: Phillip Allen's last email TO Keith Holst: 2001-05-07 'California Update 5/4/01' (47 emails Allen->Holst); the last email with both on it is 2001-05-14 'ICE Presentation', a list announcement from Ina Rangel",
+   "content: Allen forwarded Kristin Walsh's California market update (5/4/01)"
+  ]
+ },
+ {
+  "id": "m7",
+  "type": "mixed",
+  "question": "Who at Bank of America does John Arnold talk to, and what do they discuss?",
+  "key_points": [
+   "graph: Steve Lafontaine (steve.lafontaine@ 26, stevelafontaine@ 4, lafontaine@ 2 emails)",
+   "content: market views and trading, personal support during the Enron collapse"
+  ]
+ },
+ {
+  "id": "m8",
+  "type": "mixed",
+  "question": "Give me a briefing on Mike Grigsby: his main contacts and what he works on.",
+  "key_points": [
+   "graph: Keith Holst, Frank Ermis, Matthew Lenhart, Phillip Allen, Tori Kuykendall; active 2000-02 to 2001-12",
+   "content: West gas trading (index postings, EOL liquidity in West basis, PGT expansion), midyear reviews, Bloomberg access; fantasy football is noise"
+  ]
+ }
+]

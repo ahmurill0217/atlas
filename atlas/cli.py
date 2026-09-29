@@ -164,72 +164,33 @@ def index(force: bool = typer.Option(False, "--force", help="Re-embed documents 
     typer.echo(_dump(stats))
 
 
-def run_ask(question: str, use_graph: bool = True, boost: bool = False, mode: str | None = None) -> dict:
-    """Answer one question; returns the answer, citations, scope and timings.
-    use_graph adds the metadata profile; boost also ranks the entities' documents first;
-    mode="graph_only" answers from the graph facts alone, with no retrieval."""
-    import time
+def run_ask(question: str, mode: str = "auto", asker: str | None = None) -> dict:
+    """Answer one question (see atlas.retrieval.router for the modes)."""
+    from atlas.retrieval.router import ask as route_and_answer
 
-    from brain import AccessScope, AnswerOptions
-
-    from atlas.retrieval.ask import GraphContext, graph_context, system_prompt
-    from atlas.retrieval.brain_bridge import build_brain
-
-    settings = get_settings()
-    t0 = time.perf_counter()
-    with session_scope() as s:
-        ctx = graph_context(s, question) if use_graph else GraphContext()
-    if not boost:
-        ctx.document_ids = []          # profile only: search is left untouched
-    graph_ms = (time.perf_counter() - t0) * 1000
-    if mode == "graph_only":
-        from atlas.retrieval.ask import answer_from_graph
-        answer = answer_from_graph(question, ctx, settings.openai_api_key, settings.ask_model)
-        return {"question": question, "mode": mode,
-                "entities": [{"name": e.name, "type": e.entity_type, "matched": e.matched} for e in ctx.entities],
-                "scope": ctx.scope, "scope_documents": 0, "facts": ctx.facts, "answer": answer, "error": None,
-                "citations": [], "graph_ms": round(graph_ms), "seconds": round(time.perf_counter() - t0, 1),
-                "tokens": None}
-    brain = build_brain(settings, boost_document_ids=ctx.document_ids)
-    options = AnswerOptions(force_search=True, system_prompt=system_prompt(ctx) if use_graph else None)
-    answer, cited, error, usage = [], [], None, None
-    for event in brain.answer(question, access=AccessScope(bypass=True), options=options):
-        kind = getattr(event, "type", "")
-        if kind == "answer_delta":
-            answer.append(event.text)
-        elif kind == "answer_done":
-            cited, usage = event.cited_documents, event.usage
-        elif kind == "answer_error":
-            error = event.message
-    return {"question": question, "mode": ("graph" if boost else "facts") if use_graph else "baseline",
-            "entities": [{"name": e.name, "type": e.entity_type, "matched": e.matched} for e in ctx.entities],
-            "scope": ctx.scope, "scope_documents": len(ctx.document_ids), "facts": ctx.facts,
-            "answer": "".join(answer), "error": error,
-            "citations": [{"document_id": d.document_id, "title": d.semantic_identifier,
-                           "date": d.updated_at.isoformat() if d.updated_at else None} for d in cited],
-            "graph_ms": round(graph_ms), "seconds": round(time.perf_counter() - t0, 1),
-            "tokens": usage.model_dump() if usage else None}
+    return route_and_answer(question, mode=mode, asker=asker)
 
 
 @app.command()
 def ask(question: str,
-        no_graph: bool = typer.Option(False, "--no-graph", help="Plain retrieval: no graph profile."),
-        boost: bool = typer.Option(False, "--boost", help="Also rank the named entities' documents first."),
+        mode: str = typer.Option("auto", "--mode", help="auto (route the question), relationship (graph only), "
+                                 "content (brain + graph profile), content_boost, baseline (brain alone)."),
+        asker: str = typer.Option(None, "--as", help="Email of the person asking, so I / we / you resolve."),
         as_json: bool = typer.Option(False, "--json")) -> None:
-    """Answer a question: brain retrieves and cites; the graph adds a metadata profile of the people named."""
-    result = run_ask(question, use_graph=not no_graph, boost=boost)
+    """Answer a question. Relationship questions go to the graph, content questions to brain,
+    mixed ones to both."""
+    result = run_ask(question, mode=mode, asker=asker)
     if as_json:
         typer.echo(_dump(result))
         return
     if result["entities"]:
         typer.echo("Entities: " + ", ".join(f"{e['name']} ({e['type']})" for e in result["entities"]))
-    if result["scope_documents"]:
-        typer.echo(f"Boosted: {result['scope_documents']} documents ({result['scope']})")
-    typer.echo()
+    typer.echo(f"Route: {result['route']}" + (f"  ({result['route_reason']})" if result["route_reason"] else "") + "\n")
     typer.echo(result["error"] or result["answer"])
-    typer.echo("\nSources:")
-    for i, c in enumerate(result["citations"], 1):
-        typer.echo(f"  [{i}] {c['title']} ({(c['date'] or '')[:10]})  {c['document_id']}")
+    if result["citations"]:
+        typer.echo("\nSources:")
+        for c in result["citations"]:
+            typer.echo(f"  [{c['marker']}] {c['title']} ({(c['date'] or '')[:10]})  {c['document_id']}  ({c['source']})")
 
 
 @app.command()

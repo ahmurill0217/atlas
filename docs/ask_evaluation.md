@@ -121,3 +121,44 @@ The two systems answer different kinds of question:
 | Mixed (call prep, deal history) | the graph for people and timeline, brain for content |
 
 Next: a router in `atlas ask` that sends each question (or each part of it) to the right route, then a mixed question set.
+
+## Round 4: the router, mixed questions, and a citation audit
+
+**The router** is in `atlas/retrieval/router.py`.
+- **Routing:** a small classification call picks `relationship`, `content` or `mixed`. With no entity recognized, the question goes to `content`.
+- **Relationship:** answered from graph facts alone.
+- **Content:** answered by brain, with the graph profile as context.
+- **Mixed:** both, returned as two labelled sections ("From the relationship graph" / "From the emails"). They are not merged by a model.
+- **The asker:** `--as <email>` tells the graph who is asking, so "I / we / you" resolve.
+
+**Citations on both sides:**
+- **Graph:** every graph fact carries a source marker `[G#]` naming the email that shows it: first and last contact, each correspondent's latest email, each recent conversation. The graph answer cites these markers.
+- **Pair facts are now directional:** "A wrote to B n times, last <date> [G#]" is kept apart from "an email with both on it". An announcement sent to a list containing both people is no longer "the last time A emailed B".
+- **brain:** the markers are stripped from the facts brain sees. With them, the model attached `[G#]` to quoted email text they did not belong to.
+- **Search citations** are resolved through brain's own citation-number mapping, recorded from each search. Earlier rounds numbered brain's cited documents by position, which mislabelled some sources in the saved results; the answers themselves were unaffected.
+
+**Mixed set:** 8 questions in `examples/qa/enron_mixed_questions.json`; raw answers in `runs/enron/ask/mixed_v5.json`.
+- **Routing:** correct for all 8 (7 mixed; the Bishop's Corner question names no known person, so it went to content).
+- **Answer quality vs plain retrieval** (graded in `mixed.json` / `mixed_v4.json`):
+  - better: m1, m2, m7, m8. The graph section gives exact people, volume and dates; plain retrieval guessed contacts (Grigsby's "top contact" was his fantasy-football partner).
+  - tie: m3, m4, m5.
+  - m6 was wrong in both before the directional pair facts; it is now correct in the router (last email Allen → Holst 2001-05-07 "California Update 5/4/01").
+
+### Citation audit (`scripts/audit_citations.py`)
+
+- **Graph citations:** checked mechanically (the date in the claim must equal the cited email's date).
+- **Search citations:** judged by a model reading the cited email, and every "unsupported" verdict was then read by hand.
+
+| Mixed set | Cited claims | Graph citations verified | Search citations supported | Partly | Unsupported |
+|---|---|---|---|---|---|
+| Router | 67 | 31 / 31 | 23 | 3 | 10 |
+| Plain retrieval | 40 | n/a | 21 | 2 | 17 |
+
+- **Router, 81% verified** (54 of 67 claims). Every graph citation checks out.
+  - Most of its unsupported search citations are **true facts attached to the wrong email**: a quote that exists in "RE: wheres the love?" cited to "stuff"; the Prebon trade confirmation cited to the party invite. The model (gpt-4o-mini) wrote the wrong citation number.
+- **Plain retrieval, 53% verified** (21 of 40). Its unsupported citations are mostly **generalizations the emails don't contain** ("reflects a collaborative approach…" cited to fantasy-football transaction emails).
+
+### Next
+
+1. **Verify citations at answer time.** Run the audit check live: keep a supported citation; re-point a wrong-number citation to the retrieved email that does support the sentence; flag what nothing supports.
+2. **A stronger answer model:** gpt-4o-mini is the weak link in citation numbering.
