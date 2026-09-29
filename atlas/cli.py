@@ -174,7 +174,7 @@ def run_ask(question: str, mode: str = "auto", asker: str | None = None) -> dict
 @app.command()
 def ask(question: str,
         mode: str = typer.Option("auto", "--mode", help="auto (route the question), relationship (graph only), "
-                                 "content (brain + graph profile), content_boost, baseline (brain alone)."),
+                                 "content (brain + graph profile), baseline (brain alone)."),
         asker: str = typer.Option(None, "--as", help="Email of the person asking, so I / we / you resolve."),
         as_json: bool = typer.Option(False, "--json")) -> None:
     """Answer a question. Relationship questions go to the graph, content questions to brain,

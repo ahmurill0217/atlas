@@ -1,29 +1,22 @@
-"""The graph side of `atlas ask`: linking, profile facts, and the optional boost set.
-Routing and answering live in atlas/retrieval/router.py.
+"""The graph side of `atlas ask`: link the people and companies a question names,
+and describe them from email metadata. Routing and answering: atlas/retrieval/router.py.
 
   1. link   people / organizations named in the question to graph entities.
             Conservative: a person needs a full name, alias or email address (a
             single word like "Bob" never links a person); capitalized words may
             link a company whose domain label they spell ("Prebon" -> prebon.com,
             "Bank of America" -> bankofamerica.com). Uncertain -> no link.
-  2. boost  (opt-in, `--boost`) the documents those entities appear on (AUTHORED_BY / SENT_TO; for an
-            external organization, the documents of its people). Several people:
-            the documents they share, else all of theirs. Internal organizations
-            add nothing: every document involves them. The boost ranks these
-            documents first; it never hides the rest. Evaluation 2026-09-29: a hard
-            filter lost threads *about* a person that they were not on; the boost
-            still crowded them out; the profile alone matched plain retrieval and
-            added identity, so the profile without boost is the default.
-  3. facts  a metadata profile per entity (addresses, employer, volume, active
+            `asker_email` (the person asking) makes "I / we / you" resolve.
+  2. facts  a metadata profile per entity (addresses, employer, volume, active
             period, frequent correspondents inside and outside the organization
-            with last contact, recent conversations); for two people, their
-            volume each way and first / last contact; for a company and a person,
-            who there the person has dealt with
-  4. answer brain searches the whole index with the boost and answers with
-            citations; the facts ride in the system prompt, labelled as metadata
+            with last contact, recent conversations); for two people, how often
+            each wrote to the other and when, kept apart from "both on one email";
+            for a company and a person, who there the person has dealt with.
+            Every fact names an email that shows it ([G#], see GraphContext.cite).
 
-With `use_graph=False` the question goes to brain unfiltered and without facts,
-which is the baseline the graph has to beat.
+Broadcast senders (addresses that never receive mail: newsletters, stores, alerts)
+are left out of correspondents and recent conversations; placeholder dates are ignored.
+Evaluation: docs/ask_evaluation.md.
 """
 
 from __future__ import annotations
@@ -38,7 +31,6 @@ from sqlalchemy.orm import Session
 from atlas.ingestion.normalized import EARLIEST_PLAUSIBLE_DATE
 from atlas.resolution.normalize import normalize_email, normalize_name
 
-MAX_SCOPE = 20_000
 _WORD = re.compile(r"[^\s,;<>()]+@[^\s,;<>()]+|[A-Za-z][A-Za-z'&.-]*")
 _STOP = {"the", "and", "for", "with", "about", "what", "who", "how", "did", "does", "our", "we", "me", "my",
          "you", "your", "prep", "call", "deal", "know", "tell", "when", "where", "which", "why", "all",
@@ -57,8 +49,6 @@ class LinkedEntity:
 @dataclass
 class GraphContext:
     entities: list[LinkedEntity] = field(default_factory=list)
-    document_ids: list[str] = field(default_factory=list)
-    scope: str = "unscoped"
     facts: str = ""
     # Emails that show the facts, cited as [G1], [G2], ...: marker -> document id, title, date.
     sources: dict[str, dict] = field(default_factory=dict)
@@ -135,31 +125,13 @@ def link_entities(s: Session, question: str) -> list[LinkedEntity]:
     return list(found.values())
 
 
-# A document is in scope if one of the people is on it and it is not broadcast mail.
-# Broadcast = written by an address that never receives mail in the corpus
-# (newsletters, stores, system senders): a structural signal, no sender patterns.
-_DOCS_OF_PERSON = """
-    SELECT DISTINCT d.id::text FROM kg.edges g
-    JOIN kg.entity_external_ids x ON x.entity_id = g.source_entity_id AND x.identifier_type = 'source_id'
-    JOIN kg.documents d ON d.source_system || ':' || d.source_external_id = x.value
-    LEFT JOIN kg.edges au ON au.source_entity_id = g.source_entity_id AND au.relation_type = 'AUTHORED_BY'
-    WHERE g.target_entity_id = ANY(:ids) AND g.relation_type IN ('AUTHORED_BY', 'SENT_TO', 'HAS_PARTICIPANT')
-      AND g.status = 'active'
-      AND (au.target_entity_id IS NULL OR au.target_entity_id = ANY(:ids)
-           OR EXISTS (SELECT 1 FROM kg.edges rx WHERE rx.target_entity_id = au.target_entity_id
-                      AND rx.relation_type = 'SENT_TO'))"""
-
-def documents_of(s: Session, person_ids: list[uuid.UUID]) -> set[str]:
-    return set(s.execute(text(_DOCS_OF_PERSON), {"ids": person_ids}).scalars())
-
-
 def people_of(s: Session, org_id: uuid.UUID) -> list[uuid.UUID]:
     return list(s.execute(text("""SELECT source_entity_id FROM kg.edges
         WHERE target_entity_id = :o AND relation_type = 'WORKS_AT' AND status = 'active'"""), {"o": org_id}).scalars())
 
 
 # Contacts of a person: everyone they wrote to, plus everyone who wrote to them
-# and is not a broadcast sender (same definition as the scope filter above).
+# and is not a broadcast sender (an address that never receives mail in the corpus).
 _CONTACTS = """
     WITH authored AS (SELECT source_entity_id AS doc FROM kg.edges
                       WHERE target_entity_id = :i AND relation_type = 'AUTHORED_BY'),
@@ -326,15 +298,6 @@ def graph_context(s: Session, question: str, asker_email: str | None = None) -> 
         ctx.entities.insert(0, asker)          # pairs read from the asker's side
     people = [e for e in ctx.entities if e.entity_type == "Person"]
     external_orgs = [e for e in ctx.entities if e.entity_type == "Organization" and not e.is_internal]
-    sets = [documents_of(s, [p.id]) for p in people]
-    sets += [documents_of(s, people_of(s, o.id)) for o in external_orgs]
-    sets = [x for x in sets if x]
-    if sets:
-        shared = set.intersection(*sets)
-        docs, ctx.scope = (shared, "shared") if len(sets) > 1 and shared else (set.union(*sets), "union")
-        if len(sets) == 1:
-            ctx.scope = "entity"
-        ctx.document_ids = sorted(docs)[:MAX_SCOPE]
     facts = [person_facts(s, e, ctx) if e.entity_type == "Person" else org_facts(s, e)
              for e in ctx.entities if not (asker and e.id == asker.id)]
     if asker:
@@ -355,7 +318,6 @@ and dates, with one person's several addresses already combined. Search results 
 - For who someone deals with, how many emails, how often, who at a company, and first or last contact,
   answer from these facts. They are complete; do not recount from search results.
 - The facts say nothing about content. For what was said, use the search results and cite them.
-{scope}
 {facts}
 """
 
@@ -363,11 +325,7 @@ and dates, with one person's several addresses already combined. Search results 
 def system_prompt(ctx: GraphContext) -> str:
     from brain.answer.prompts.chat_prompts import DEFAULT_SYSTEM_PROMPT
 
-    scope = (f"Search covers every email; the {len(ctx.document_ids)} emails involving the entities below "
-             "rank first. Emails about a person that they are not on can matter too."
-             if ctx.document_ids else "Search covers every email.")
     # Graph markers stay out of brain's prompt: given them, the model attached [G#] to quoted email
     # text they do not belong to. Graph citations come only from the graph's own answer.
     facts = re.sub(r" ?\[G\d+\]", "", ctx.facts)
-    return DEFAULT_SYSTEM_PROMPT + SYSTEM_SUFFIX.format(scope=scope, facts=facts or "(no entities recognized)")
-
+    return DEFAULT_SYSTEM_PROMPT + SYSTEM_SUFFIX.format(facts=facts or "(no entities recognized)")

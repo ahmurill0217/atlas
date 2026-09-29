@@ -1,8 +1,0 @@
-{
-  "allowed_entity_types": ["Drug", "Gene", "Protein", "Mutation", "Disease", "ClinicalTrial",
-                           "Organization", "RegulatoryAgency", "BiologicalPathway"],
-  "allowed_relationship_types": ["targets", "inhibits", "binds", "developed_by", "marketed_by",
-                                 "evaluated_in", "sponsored_by", "approved_for", "approved_by",
-                                 "enrolled_patients_with", "compared_with", "combined_with",
-                                 "variant_of", "subtype_of", "encodes", "activates", "occurs_in"]
-}

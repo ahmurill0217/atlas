@@ -1,5 +1,7 @@
 # `atlas ask` evaluation: graph-scoped vs plain retrieval (2026-09-29)
 
+> Rounds 1–2 tested graph filtering and boosting of the search. Both were removed after these results; the profile-only and router modes remain. Result files live under `runs/enron/ask/` (not in git).
+
 ## Setup
 
 - **Corpus:** 5,000 Enron emails from the Allen, Arnold, Cuilla and Ermis mailboxes.

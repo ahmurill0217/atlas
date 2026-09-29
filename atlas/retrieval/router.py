@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import re
 import time
-from dataclasses import replace
 from enum import Enum
 
 from pydantic import BaseModel
@@ -98,17 +97,13 @@ def graph_answer(question: str, ctx: GraphContext, settings: Settings, part: boo
     return response.choices[0].message.content or ""
 
 
-def brain_answer(question: str, ctx: GraphContext, settings: Settings, use_graph: bool = True,
-                 boost: bool = False) -> dict:
-    """brain retrieves and answers with citations; the graph profile is context (use_graph), and
-    the entities' documents can rank first (boost)."""
+def brain_answer(question: str, ctx: GraphContext, settings: Settings, use_graph: bool = True) -> dict:
+    """brain retrieves and answers with citations; the graph profile is context (use_graph)."""
     from brain import AccessScope, AnswerOptions
 
     from atlas.retrieval.brain_bridge import build_brain
 
-    brain = build_brain(settings, boost_document_ids=ctx.document_ids if boost else None)
-    if not boost:
-        ctx = replace(ctx, document_ids=[])          # profile only: search is left untouched
+    brain = build_brain(settings)
     options = AnswerOptions(force_search=True, system_prompt=system_prompt(ctx) if use_graph else None)
     # Citation numbers the model can write -> documents, recorded from every search the answer
     # loop runs (brain keeps the first mapping for a number, so this does too). brain's citation
@@ -168,12 +163,12 @@ def compose_mixed(graph_part: str, content: str) -> str:
            f"**From the emails**\n\n{content.strip()}"
 
 
-MODES = ("auto", "relationship", "content", "content_boost", "baseline")
+MODES = ("auto", "relationship", "content", "baseline")
 
 
 def ask(question: str, mode: str = "auto", settings: Settings | None = None, asker: str | None = None) -> dict:
     """Answer one question. mode: auto (route it), relationship (graph only), content (brain +
-    profile), content_boost (brain + profile + boost), baseline (brain alone). asker: email of the
+    profile), baseline (brain alone). asker: email of the
     person asking, so "I" / "we" / "you" resolve."""
     if mode not in MODES:
         raise ValueError(f"mode must be one of {MODES}")
@@ -184,8 +179,7 @@ def ask(question: str, mode: str = "auto", settings: Settings | None = None, ask
     graph_ms = (time.perf_counter() - t0) * 1000
 
     decision = None
-    route = {"relationship": Route.RELATIONSHIP, "content": Route.CONTENT, "content_boost": Route.CONTENT,
-             "baseline": Route.CONTENT}.get(mode)
+    route = {"relationship": Route.RELATIONSHIP, "content": Route.CONTENT, "baseline": Route.CONTENT}.get(mode)
     if mode == "auto":
         decision = classify(question, ctx, settings)
         route = decision.route
@@ -195,7 +189,7 @@ def ask(question: str, mode: str = "auto", settings: Settings | None = None, ask
         result["answer"] = graph_answer(question, ctx, settings)
         result["citations"] = graph_citations(result["answer"], ctx)
     elif route is Route.CONTENT:
-        result = brain_answer(question, ctx, settings, use_graph=mode != "baseline", boost=mode == "content_boost")
+        result = brain_answer(question, ctx, settings, use_graph=mode != "baseline")
     else:
         result = brain_answer(question, ctx, settings)
         result["graph_part"] = graph_answer(question, ctx, settings, part=True)
@@ -206,6 +200,5 @@ def ask(question: str, mode: str = "auto", settings: Settings | None = None, ask
     return {"question": question, "mode": mode, "route": route.value,
             "route_reason": decision.reason if decision else None,
             "entities": [{"name": e.name, "type": e.entity_type, "matched": e.matched} for e in ctx.entities],
-            "scope": ctx.scope, "scope_documents": len(ctx.document_ids) if mode == "content_boost" else 0,
             "facts": ctx.facts, **result,
             "graph_ms": round(graph_ms), "seconds": round(time.perf_counter() - t0, 1)}

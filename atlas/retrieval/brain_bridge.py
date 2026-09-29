@@ -17,8 +17,6 @@ from __future__ import annotations
 import time
 from collections.abc import Iterator
 
-from brain.retrieval.fusion import weighted_reciprocal_rank_fusion
-from brain.retrieval.searcher import Searcher
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -27,52 +25,18 @@ from atlas.config import ROOT, Settings
 HEADER_ROLES = [("sender", "From"), ("to", "To"), ("cc", "Cc"), ("bcc", "Bcc"), ("invitee", "Invitees")]
 
 
-def build_brain(settings: Settings, boost_document_ids: list[str] | None = None):
-    """A brain.Brain on the local stack (OpenSearch :9201, model server :9100).
-    With `boost_document_ids`, search covers the whole index but those documents
-    rank higher (see GraphBoostedSearcher)."""
+def build_brain(settings: Settings):
+    """A brain.Brain on the local stack (OpenSearch :9201, model server :9100)."""
     from brain import Brain, BrainSettings
-    from brain.answer.loop import AnswerLoop
 
     store = settings.brain_store_url or f"sqlite:///{ROOT}/runs/brain_store_{settings.brain_index}.db"
     llm = {}
     if settings.openai_api_key:
         llm = dict(llm_provider=settings.ask_provider, llm_model=settings.ask_model,
                    llm_api_key=settings.openai_api_key)
-    brain = Brain.from_settings(BrainSettings(
+    return Brain.from_settings(BrainSettings(
         opensearch_port=settings.brain_opensearch_port, model_server_port=settings.brain_model_server_port,
         opensearch_index_name=settings.brain_index, opensearch_num_replicas=0, document_store_url=store, **llm))
-    if boost_document_ids:
-        brain.searcher = GraphBoostedSearcher(brain.index, brain.embedder, brain.settings, llm=brain.llm,
-                                              boost_document_ids=boost_document_ids)
-        if brain.llm is not None:
-            brain.answer_loop = AnswerLoop(brain.searcher, brain.llm, brain.settings)
-    return brain
-
-
-class GraphBoostedSearcher(Searcher):
-    """brain's Searcher, with the graph as a boost instead of a filter.
-
-    Every query runs twice, over the whole index and over the documents the graph
-    ties to the question's entities, and the two rankings are fused with brain's
-    own weighted reciprocal rank fusion. Documents involving the entities rise;
-    documents merely *about* them (a thread between two other people) stay
-    reachable, which a hard `document_ids` filter would lose.
-
-    Overrides brain's `_run_searches`, the one step that takes the filters."""
-
-    def __init__(self, *args, boost_document_ids: list[str], boost_weight: float = 1.0, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.boost_document_ids = list(boost_document_ids)
-        self.boost_weight = boost_weight
-
-    def _run_searches(self, weighted_queries, index_filters, num_hits):
-        everything = super()._run_searches(weighted_queries, index_filters, num_hits)
-        scoped_filters = index_filters.model_copy(update={"document_ids": self.boost_document_ids})
-        scoped = super()._run_searches(weighted_queries, scoped_filters, num_hits)
-        return weighted_reciprocal_rank_fusion(
-            [everything, scoped], [1.0, self.boost_weight],
-            id_extractor=lambda chunk: f"{chunk.document_id}_{chunk.chunk_id}", k=self.settings.rrf_k)
 
 
 def _names_by_email(s: Session) -> dict[str, str]:
