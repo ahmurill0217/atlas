@@ -141,6 +141,33 @@ uv run python scripts/audit_citations.py runs/enron/ask/mixed.json --mode auto
 
 The question sets are in `examples/qa/`: content, relationship and mixed.
 
+## Your own Gmail (Takeout)
+
+Export your mail from [takeout.google.com](https://takeout.google.com):
+1. Click "Deselect all", then tick Mail.
+2. Export once as a .zip and unzip it.
+
+The file is `Takeout/Mail/All mail Including Spam and Trash.mbox`.
+
+```bash
+mkdir -p runs/gmail
+uv run python scripts/takeout_to_atlas.py "path/to/All mail Including Spam and Trash.mbox" runs/gmail/json \
+  --since 2025-01-01 --limit 5000 --attachments runs/gmail/files
+
+export DATABASE_URL=postgresql+psycopg://brain:brain@localhost:5433/brain_gmail
+export ATLAS_INTERNAL_DOMAINS='[]' ATLAS_BRAIN_INDEX=atlas_gmail   # a company account: its domains
+uv run python -c "from atlas.db.admin import ensure_database, migrate; import os; \
+  ensure_database(os.environ['DATABASE_URL']); migrate(os.environ['DATABASE_URL'])"
+uv run python -m atlas ingest runs/gmail/json
+uv run python -m atlas ingest runs/gmail/files        # saved PDF / DOCX attachments
+uv run python -m atlas index
+uv run python -m atlas ask "Who have I emailed most this year?" --as you@gmail.com
+```
+
+- **Skipped:** Spam, Trash, Chats, Promotions and Social (`--keep-promotions` keeps the last two).
+- **`--limit`** keeps the most recent messages.
+- **Where your data goes:** everything stays on this machine (`runs/` is git-ignored) except answering. The question, graph facts and retrieved email text go to the answer model (OpenAI).
+
 ## Layout
 
 | Path | What |
@@ -150,5 +177,5 @@ The question sets are in `examples/qa/`: content, relationship and mixed.
 | `atlas/graph`, `review`, `provenance` | storage, queries, viewer, review queue, audit and evidence |
 | `atlas/retrieval` | brain indexing, graph facts for questions, the router |
 | `ontology/` | the ontology (versioned in its files; `CHANGELOG.md`) |
-| `scripts/` | Enron converter, sample generator, ask evaluator, citation audit |
+| `scripts/` | Enron and Gmail Takeout converters, sample generator, ask evaluator, citation audit |
 | `docs/` | architecture, reference, evaluation, findings |
