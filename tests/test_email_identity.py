@@ -1,4 +1,4 @@
-"""Ontology 1.3: bulk / mailing-list senders never imply employment."""
+"""Email identity and employment rules: bulk senders, mailboxes, names, address patterns."""
 
 import uuid
 
@@ -6,13 +6,7 @@ import pytest
 
 from atlas.extraction.structured import StructuredExtractor
 from atlas.ingestion.adapters.email_json import EmailJsonAdapter
-from atlas.ontology import load_ontology
-from tests.v1.conftest import ROOT
-
-
-@pytest.fixture(scope="session")
-def ontology_v13():
-    return load_ontology(str(ROOT / "ontology" / "v1_3"))
+from tests.conftest import ontology_variant
 
 
 def _email(sender: str, to: list[str]):
@@ -23,8 +17,8 @@ def _email(sender: str, to: list[str]):
 @pytest.mark.parametrize("address", [
     "noreply@acme.com", "info@iwon.com", "newsletter@ftenergy.com", "owner-energy@lists.thebiz.net",
     "ferc-request@acme.com", "alerts@info.iwon.com", "list@mailman.enron.com", "anyone@lists.acme.com"])
-def test_bulk_senders_get_no_employment(ontology_v13, address):
-    cs = StructuredExtractor(ontology_v13, ["enron.com"]).extract(_email(address, ["jeff.skilling@enron.com"]),
+def test_bulk_senders_get_no_employment(ontology, address):
+    cs = StructuredExtractor(ontology, ["enron.com"]).extract(_email(address, ["jeff.skilling@enron.com"]),
                                                                    uuid.uuid4())
     works_at = {(e.source_local_id, e.target_local_id) for e in cs.edges if e.suggested_relation == "WORKS_AT"}
     assert works_at == {("person:email:jeff.skilling@enron.com", "org:domain:enron.com")}
@@ -32,25 +26,28 @@ def test_bulk_senders_get_no_employment(ontology_v13, address):
     assert any(e.suggested_relation == "AUTHORED_BY" for e in cs.edges)             # authorship kept
 
 
-def test_consumer_provider_subdomains_are_generic(ontology_v13):
-    cs = StructuredExtractor(ontology_v13).extract(_email("brian@email.msn.com", ["pat@mail.yahoo.com"]),
+def test_consumer_provider_subdomains_are_generic(ontology):
+    cs = StructuredExtractor(ontology).extract(_email("brian@email.msn.com", ["pat@mail.yahoo.com"]),
                                                    uuid.uuid4())
     assert not [e for e in cs.edges if e.suggested_relation == "WORKS_AT"]
 
 
 @pytest.mark.parametrize("address", ["sarah.chen@acme.com", "information.desk@acme.com", "news.anchor@cnn.com",
                                      "mike@mail.northwind.io", "dana@eng.acme.com"])
-def test_people_still_get_employment(ontology_v13, address):
-    cs = StructuredExtractor(ontology_v13).extract(_email(address, []), uuid.uuid4())
+def test_people_still_get_employment(ontology, address):
+    cs = StructuredExtractor(ontology).extract(_email(address, []), uuid.uuid4())
     assert [e.suggested_relation for e in cs.edges if e.suggested_relation == "WORKS_AT"] == ["WORKS_AT"]
 
 
-def test_policy_lives_in_the_ontology(ontology_v13):
-    old = load_ontology(str(ROOT / "ontology" / "v1_2"))
-    assert "bulk_senders" not in old.policies.email_domain_employment
-    cs = StructuredExtractor(old).extract(_email("noreply@acme.com", []), uuid.uuid4())
-    assert any(e.suggested_relation == "WORKS_AT" for e in cs.edges)    # 1.2 behaviour unchanged, replayable
-    assert ontology_v13.version == "1.3"
+def test_policy_lives_in_the_ontology(ontology, tmp_path):
+    def without_bulk_rules(docs):
+        del docs["validation.yaml"]["email_domain_employment"]["bulk_senders"]
+
+    plain = ontology_variant(tmp_path, "0.9", without_bulk_rules)
+    cs = StructuredExtractor(plain).extract(_email("noreply@acme.com", []), uuid.uuid4())
+    assert any(e.suggested_relation == "WORKS_AT" for e in cs.edges)    # the rule comes from the policy, not code
+    cs = StructuredExtractor(ontology).extract(_email("noreply@acme.com", []), uuid.uuid4())
+    assert not any(e.suggested_relation == "WORKS_AT" for e in cs.edges)
 
 
 # --- email identity: names, mailboxes, organizations -------------------------------------
@@ -59,8 +56,8 @@ def _person(cs, email):
     return next(e for e in cs.entities if e.local_id == f"person:email:{email}")
 
 
-def test_names_from_address_and_display(ontology_v13):
-    x = StructuredExtractor(ontology_v13)
+def test_names_from_address_and_display(ontology):
+    x = StructuredExtractor(ontology)
     cs = x.extract(_email("phillip.allen@enron.com", ['"Allen, Phillip K." <pk@acme.com>', "pallen@enron.com",
                                                       "k..allen@enron.com"]), uuid.uuid4())
     assert (_person(cs, "phillip.allen@enron.com").name, _person(cs, "phillip.allen@enron.com").properties) == \
@@ -70,8 +67,8 @@ def test_names_from_address_and_display(ontology_v13):
         assert _person(cs, handle).name == handle.split("@")[0] and _person(cs, handle).properties == {}
 
 
-def test_mailbox_and_organization_use_registrable_domain(ontology_v13):
-    cs = StructuredExtractor(ontology_v13, ["enron.com"]).extract(
+def test_mailbox_and_organization_use_registrable_domain(ontology):
+    cs = StructuredExtractor(ontology, ["enron.com"]).extract(
         _email("pallen@ect.enron.com", ["ann@world.bbc.co.uk", "joe@houston.rr.com"]), uuid.uuid4())
     assert _person(cs, "pallen@ect.enron.com").identifiers == {"email": "pallen@ect.enron.com",
                                                                "mailbox": "pallen@enron.com"}
@@ -106,11 +103,11 @@ def _people(kg):
 
 
 @pytest.mark.parametrize("order", [1, -1])
-def test_one_person_across_addresses(kg, atlas_settings, ontology_v13, tmp_path, order):
+def test_one_person_across_addresses(kg, atlas_settings, ontology, tmp_path, order):
     """flast handle and sub-domain variants fold into the first.last person, in either order."""
     msgs = [("phillip.allen@enron.com", ["tim.belden@enron.com"]), ("pallen@ect.enron.com", ["tim.belden@enron.com"]),
             ("pallen@enron.com", ["jadams@acme.com", "john.adams@acme.com"])][::order]
-    _ingest(kg, atlas_settings, ontology_v13, tmp_path, msgs)
+    _ingest(kg, atlas_settings, ontology, tmp_path, msgs)
     people = _people(kg)
     assert people["Phillip Allen"] == ["pallen@ect.enron.com", "pallen@enron.com", "phillip.allen@enron.com"]
     assert people["John Adams"] == ["jadams@acme.com", "john.adams@acme.com"]
@@ -121,8 +118,8 @@ def test_one_person_across_addresses(kg, atlas_settings, ontology_v13, tmp_path,
         assert c.execute(text("SELECT count(*) FROM kg.review_items")).scalar() == 0
 
 
-def test_ambiguous_handle_is_never_linked(kg, atlas_settings, ontology_v13, tmp_path):
-    _ingest(kg, atlas_settings, ontology_v13, tmp_path, [
+def test_ambiguous_handle_is_never_linked(kg, atlas_settings, ontology, tmp_path):
+    _ingest(kg, atlas_settings, ontology, tmp_path, [
         ("phillip.allen@enron.com", ["paul.allen@enron.com"]), ("pallen@enron.com", ["tim.belden@enron.com"])])
     people = _people(kg)
     assert people["pallen"] == ["pallen@enron.com"]                             # two people fit: kept apart
@@ -131,29 +128,29 @@ def test_ambiguous_handle_is_never_linked(kg, atlas_settings, ontology_v13, tmp_
         assert c.execute(text("SELECT count(*) FROM kg.review_items WHERE review_type = 'POSSIBLE_DUPLICATE'")).scalar() == 2
 
 
-def test_display_name_contradiction_blocks_link(kg, atlas_settings, ontology_v13, tmp_path):
-    _ingest(kg, atlas_settings, ontology_v13, tmp_path, [
+def test_display_name_contradiction_blocks_link(kg, atlas_settings, ontology, tmp_path):
+    _ingest(kg, atlas_settings, ontology, tmp_path, [
         ("phillip.allen@enron.com", ["tim.belden@enron.com"]), ("Paul Allen <pallen@enron.com>", ["tim.belden@enron.com"])])
     people = _people(kg)
     assert people["Paul Allen"] == ["pallen@enron.com"] and people["Phillip Allen"] == ["phillip.allen@enron.com"]
 
 
-def test_list_addresses_get_no_name_and_no_mailbox(ontology_v13):
-    cs = StructuredExtractor(ontology_v13).extract(_email("owner-newsletter@lists.houstonpress.com", []), uuid.uuid4())
+def test_list_addresses_get_no_name_and_no_mailbox(ontology):
+    cs = StructuredExtractor(ontology).extract(_email("owner-newsletter@lists.houstonpress.com", []), uuid.uuid4())
     p = _person(cs, "owner-newsletter@lists.houstonpress.com")
     assert p.name == "owner-newsletter" and p.properties == {} and "mailbox" not in p.identifiers
 
 
-def test_handle_that_is_a_first_name_never_links(kg, atlas_settings, ontology_v13, tmp_path):
+def test_handle_that_is_a_first_name_never_links(kg, atlas_settings, ontology, tmp_path):
     settings = atlas_settings.model_copy(update={"internal_domains": ["enron.com"]})
-    _ingest(kg, settings, ontology_v13, tmp_path, [
+    _ingest(kg, settings, ontology, tmp_path, [
         ("home.john@enron.com", ["john.arnold@enron.com"]), ("john@enron.com", ["tim.belden@enron.com"])])
     assert _people(kg)["john"] == ["john@enron.com"]
 
 
-def test_lastname_handles_link_only_inside_the_company(kg, atlas_settings, ontology_v13, tmp_path):
+def test_lastname_handles_link_only_inside_the_company(kg, atlas_settings, ontology, tmp_path):
     settings = atlas_settings.model_copy(update={"internal_domains": ["enron.com"]})
-    _ingest(kg, settings, ontology_v13, tmp_path, [
+    _ingest(kg, settings, ontology, tmp_path, [
         ("john.lavorato@enron.com", ["steve.lafontaine@bankofamerica.com"]),
         ("lavorato@enron.com", ["lafontaine@bankofamerica.com"])])
     people = _people(kg)

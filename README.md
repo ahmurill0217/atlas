@@ -10,7 +10,7 @@ Atlas is a knowledge graph over a company's email, documents and meetings, built
 Every answer cites the emails behind it.
 
 - **How it fits together:** [docs/architecture.md](docs/architecture.md)
-- **Ingestion, ontology and compiler reference:** [docs/atlas_v1.md](docs/atlas_v1.md)
+- **Ingestion, ontology and compiler reference:** [docs/reference.md](docs/reference.md)
 - **Evaluation:** [docs/ask_evaluation.md](docs/ask_evaluation.md)
 - **Experiments behind the design:** [docs/findings.md](docs/findings.md)
 

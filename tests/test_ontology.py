@@ -7,26 +7,26 @@ import yaml
 from atlas.extraction.candidates import EvidenceRef
 from atlas.ontology import MapStatus, OntologyError, load_ontology, map_entity_type, map_relation
 from atlas.ontology.validator import validate_edge, validate_entity
-from tests.v1.conftest import ROOT
+from tests.conftest import ROOT
 
 EV_STRUCT = EvidenceRef(document_id=uuid.uuid4(), source_field="from")
 EV_TEXT = EvidenceRef(document_id=uuid.uuid4(), evidence_text="Sarah Chen from Acme")
 
 
-def test_loads_v1_with_stable_checksum(ontology):
+def test_loads_with_stable_checksum(ontology):
     assert ontology.version == "1.0"
     assert {"Person", "Organization", "Document", "Project", "Event", "Location", "Team", "Meeting", "Product",
-            "Contract", "Initiative", "Opportunity"} == set(ontology.entity_types)
+            "Contract", "Initiative", "Opportunity", "ActionItem"} == set(ontology.entity_types)
     assert {"Customer", "Vendor"} == set(ontology.roles)
-    assert len(ontology.relations) == 19
+    assert len(ontology.relations) == 22
     load_ontology.cache_clear()
-    assert load_ontology(str(ROOT / "ontology" / "v1_0")).checksum == ontology.checksum
+    assert load_ontology(str(ROOT / "ontology")).checksum == ontology.checksum
     assert ontology.is_a("Meeting", "Event") and ontology.identity_fields("Meeting")[-1] == "event_external_id"
 
 
 def _broken(tmp_path, filename, mutate):
-    target = tmp_path / f"v1_0_{uuid.uuid4().hex[:8]}"
-    shutil.copytree(ROOT / "ontology" / "v1_0", target)
+    target = tmp_path / f"ontology_{uuid.uuid4().hex[:8]}"
+    shutil.copytree(ROOT / "ontology", target)
     doc = yaml.safe_load((target / filename).read_text())
     mutate(doc)
     (target / filename).write_text(yaml.safe_dump(doc))
@@ -70,7 +70,8 @@ def test_entity_type_mapping(ontology):
     assert (m.entity_type, m.role) == ("Organization", "Customer")
     assert map_entity_type(ontology, "Vendor").role == "Vendor"            # a role, not a new node type
     assert map_entity_type(ontology, "deal").entity_type == "Opportunity"
-    assert map_entity_type(ontology, "ActionItem").status is MapStatus.UNRESOLVED
+    assert map_entity_type(ontology, "task").entity_type == "ActionItem"
+    assert map_entity_type(ontology, "Invoice").status is MapStatus.UNRESOLVED        # not in the ontology
 
 
 def test_edge_validation(ontology):

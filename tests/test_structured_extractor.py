@@ -2,7 +2,7 @@ import uuid
 
 from atlas.extraction.structured import StructuredExtractor
 from atlas.ingestion.adapters import normalize_file
-from tests.v1.conftest import CORPUS
+from tests.conftest import CORPUS
 
 V = uuid.uuid4()
 

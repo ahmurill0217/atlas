@@ -1,13 +1,13 @@
-# Ontology V1.3 — Core module.
+# Ontology — Core module.
 # Canonical entity and relation types. Nothing outside this directory may
 # define graph schema; extractors may only *propose* against it.
-version: "1.3"
+version: "1.0"
 module: core
 
 entities:
   Person:
     description: A human being.
-    # mailbox (1.3): local part at the registrable domain; pallen@ect.enron.com -> pallen@enron.com
+    # mailbox: local part at the registrable domain; pallen@ect.enron.com -> pallen@enron.com
     identity_fields: [email, employee_id, mailbox]
     properties: [canonical_name, first_name, last_name, email, job_title, department]
 
@@ -79,7 +79,7 @@ relations:
     target: [Person, Team, Organization]
 
   SENT_TO:
-    description: The message was addressed to the person (edge property recipient_type = to | cc | bcc). Added in 1.1.
+    description: The message was addressed to the person (edge property recipient_type = to | cc | bcc).
     source: [Document]
     target: [Person]
 

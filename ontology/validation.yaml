@@ -1,5 +1,5 @@
-# Ontology V1.3 — Deterministic policies. Thresholds live here, not in code.
-version: "1.3"
+# Ontology — Deterministic policies. Thresholds live here, not in code.
+version: "1.0"
 
 provenance_classes:
   STRUCTURED_SOURCE: {requires: [document_id, source_field]}
@@ -12,7 +12,7 @@ provenance_classes:
 acceptance:
   STRUCTURED_SOURCE: 0.60
   EXPLICIT_TEXT: 0.85
-  INFERRED_TEXT: 1.01      # never auto-accepted in V1.0
+  INFERRED_TEXT: 1.01      # never auto-accepted
   HUMAN_CONFIRMED: 0.0
 
 # Confidence assigned to facts derived from structured fields, by rule.
@@ -23,9 +23,9 @@ structured_trust:
   meeting.recorded_by: 0.95           # the recorder was present -> ATTENDED
   meeting.calendar_invitee: 0.95      # invited -> HAS_PARTICIPANT (not ATTENDED)
   fathom.team: 0.90                   # recorder's Fathom team -> MEMBER_OF
-  email.recipients: 1.0               # Document SENT_TO recipient (to/cc/bcc headers)         [1.1]
-  meeting.action_item: 0.95           # ActionItem ORIGINATED_IN / ASSIGNED_TO from Fathom     [1.1]
-  document.author: 0.95               # Document AUTHORED_BY author identified by email in      [1.2]
+  email.recipients: 1.0               # Document SENT_TO recipient (to/cc/bcc headers)
+  meeting.action_item: 0.95           # ActionItem ORIGINATED_IN / ASSIGNED_TO from Fathom
+  document.author: 0.95               # Document AUTHORED_BY author identified by email in
                                       # structured metadata (e.g. Drive). Name-only file-metadata
                                       # authors ("Microsoft Office User") never become edges.
   email_domain_employment: 0.70       # Person WORKS_AT Organization inferred from email domain
@@ -35,11 +35,11 @@ email_domain_employment:
   enabled: true
   excluded_domains: [gmail.com, googlemail.com, yahoo.com, outlook.com, hotmail.com, live.com,
                      msn.com, icloud.com, me.com, aol.com, proton.me, protonmail.com, gmx.com,
-                     # consumer ISPs (1.3); subdomains match too (email.msn.com, houston.rr.com)
+                     # consumer ISPs; subdomains match too (email.msn.com, houston.rr.com)
                      rr.com, comcast.net, att.net, sbcglobal.net, verizon.net, cox.net, bellsouth.net,
                      earthlink.net, juno.com, netzero.net, prodigy.net, mindspring.com, excite.com,
                      charter.net, optonline.net, mac.com]
-  # Bulk / mailing-list / system senders (1.3). Their domain says who runs the
+  # Bulk / mailing-list / system senders. Their domain says who runs the
   # list, not who employs a person, so no WORKS_AT is proposed for them.
   bulk_senders:
     local_parts: [noreply, no-reply, no_reply, donotreply, do-not-reply, do_not_reply, newsletter,
@@ -54,7 +54,7 @@ email_domain_employment:
                        newsletters, info, bounce, bounces, mkt, marketing, reply, updates, alerts,
                        notifications, mailer]
 
-# Reading email addresses (1.3). See atlas/resolution/email_identity.py.
+# Reading email addresses. See atlas/resolution/email_identity.py.
 email_identity:
   # One mailbox reached through a company's sub-domains is one person:
   # pallen@ect.enron.com == pallen@enron.com (identifier `mailbox`). Organizations
@@ -74,7 +74,3 @@ email_identity:
 resolution:
   auto_merge: 0.95
   review_min: 0.80
-
-normalization:
-  corporate_suffixes: [inc, incorporated, corp, corporation, co, company, llc, ltd, limited,
-                       plc, gmbh, ag, sa, bv, nv, pty, lp, llp]

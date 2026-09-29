@@ -29,14 +29,6 @@ def domain_of(email: str) -> str | None:
     return normalize_domain(email.rsplit("@", 1)[1]) if "@" in email else None
 
 
-def organization_key(name: str, corporate_suffixes: list[str]) -> str:
-    """Retrieval key only ('Acme, Inc.' == 'ACME Incorporated' == 'acme'); never a merge rule."""
-    tokens = normalize_name(name).split()
-    while tokens and tokens[-1] in corporate_suffixes:
-        tokens.pop()
-    return " ".join(tokens)
-
-
 # Identifier types that are case-insensitive by nature. Everything else is a
 # source-native id (Drive file ids, Gmail message ids, paths, meeting ids) and
 # is case-SENSITIVE: lowercasing could merge two different objects.

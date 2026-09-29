@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from atlas.compiler.compiler import GraphCompiler
 from atlas.db.models import Edge, Entity, ReviewItem
-from tests.v1.conftest import candidate_set, edge, ent, make_doc
+from tests.conftest import candidate_set, edge, ent, make_doc
 
 
 def _compile(session, ontology, doc, vid, entities, edges=()):

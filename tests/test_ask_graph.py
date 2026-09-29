@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from atlas.ontology import load_ontology
 from atlas.pipeline import KnowledgeIngestionPipeline
 from atlas.retrieval.ask import graph_context
-from tests.v1.conftest import ROOT
+from tests.conftest import ROOT
 
 
 @pytest.fixture
@@ -22,7 +22,7 @@ def mailbox(kg, atlas_settings, tmp_path):
                                                         "from": sender, "to": to, "subject": subject, "date": date,
                                                         "body": "text"}))
     settings = atlas_settings.model_copy(update={"internal_domains": ["enron.com"]})
-    KnowledgeIngestionPipeline(kg, settings, load_ontology(str(ROOT / "ontology" / "v1_3"))).ingest(tmp_path)
+    KnowledgeIngestionPipeline(kg, settings, load_ontology(str(ROOT / "ontology"))).ingest(tmp_path)
     return kg
 
 
@@ -63,7 +63,7 @@ def test_relationship_facts(kg, atlas_settings, tmp_path):
         (tmp_path / f"{i}.json").write_text(json.dumps({"source_system": "test", "message_id": f"r{i}", "from": sender,
                                                         "to": to, "subject": subject, "date": date, "body": "x"}))
     settings = atlas_settings.model_copy(update={"internal_domains": ["enron.com"]})
-    KnowledgeIngestionPipeline(kg, settings, load_ontology(str(ROOT / "ontology" / "v1_3"))).ingest(tmp_path)
+    KnowledgeIngestionPipeline(kg, settings, load_ontology(str(ROOT / "ontology"))).ingest(tmp_path)
     with Session(kg) as s:
         bofa = graph_context(s, "Who at Bank of America has John Arnold emailed with?")
         pair = graph_context(s, "Has Mike Grigsby ever emailed Steve Lafontaine?")
@@ -89,7 +89,7 @@ def test_copied_on_the_same_email_is_not_writing_to_each_other(kg, atlas_setting
         (tmp_path / f"{i}.json").write_text(json.dumps({"source_system": "test", "message_id": f"c{i}", "from": sender,
                                                         "to": to, "subject": subject, "date": date, "body": "x"}))
     settings = atlas_settings.model_copy(update={"internal_domains": ["enron.com"]})
-    KnowledgeIngestionPipeline(kg, settings, load_ontology(str(ROOT / "ontology" / "v1_3"))).ingest(tmp_path)
+    KnowledgeIngestionPipeline(kg, settings, load_ontology(str(ROOT / "ontology"))).ingest(tmp_path)
     with Session(kg) as s:
         ctx = graph_context(s, "When did Phillip Allen last email Keith Holst?")
         mine = graph_context(s, "How often do we talk to Keith Holst?", asker_email="phillip.allen@enron.com")

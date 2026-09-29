@@ -1,4 +1,4 @@
-"""Deterministic reading of email addresses (policy `email_identity`, ontology 1.3).
+"""Deterministic reading of email addresses (policy `email_identity`).
 
   organization domain   registrable domain: ect.enron.com -> enron.com, news.bbc.co.uk -> bbc.co.uk
   mailbox               local part at the organization domain: pallen@ect.enron.com -> pallen@enron.com

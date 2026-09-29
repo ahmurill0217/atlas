@@ -26,7 +26,7 @@ Atlas (Postgres, schema kg)                         brain (../brain; OpenSearch 
 
 - **Atlas** builds the graph from metadata only (who wrote to whom, when; meeting invitees, speakers, action items; document authors). It uses no model at ingest.
   - Every fact has evidence.
-  - The ontology (`ontology/v1_3`) is the only schema.
+  - The ontology (`ontology/`) is the only schema.
   - Ambiguity goes to a review queue, not a guess.
   - Identity: one person across addresses (`mailbox` identifier, address patterns); organizations by registrable domain; broadcast senders recognized.
 - **brain** is an Onyx-derived library: chunking, local embeddings, hybrid search and cited answers. Atlas sends it each document's own text, prefixed with a header that uses graph-resolved names.
@@ -73,7 +73,7 @@ Atlas (Postgres, schema kg)                         brain (../brain; OpenSearch 
 | `atlas/graph` | repository (writer), queries, `explain_edge`, HTML viewer |
 | `atlas/review`, `atlas/provenance` | review queue, audit log, evidence |
 | `atlas/retrieval` | `brain_bridge` (indexing), `ask` (graph facts), `router` (answering) |
-| `ontology/v1_0 … v1_3` | versioned ontology; `CHANGELOG.md` |
+| `ontology/` | the ontology (versioned in its files; `CHANGELOG.md`) |
 | `migrations` | Alembic; schema `kg` |
 | `scripts` | Enron converter, sample generator, ask evaluator, citation audit |
 | `examples` | business samples; Enron question sets |

@@ -1,4 +1,4 @@
-# Ontology V1.0 — Aliases. Language variation, NOT schema variation.
+# Ontology — Aliases. Language variation, NOT schema variation.
 # An extractor's suggested type/relation is looked up here (after exact
 # canonical names). Anything not listed resolves to UNRESOLVED -> review.
 version: "1.0"
@@ -40,6 +40,10 @@ entity_types:
   program: {type: Initiative}
   opportunity: {type: Opportunity}
   deal: {type: Opportunity}
+  action item: {type: ActionItem}
+  task: {type: ActionItem}
+  to do: {type: ActionItem}
+  follow up: {type: ActionItem}
 
 relations:
   WORKS_AT: [works at, works for, employed by, employee of]
@@ -59,3 +63,6 @@ relations:
   PART_OF: [part of, belongs to initiative]
   BETWEEN: [between, signed by, party to]
   USES_PRODUCT: [uses, uses product, is using]
+  SENT_TO: [sent to, addressed to, recipient, cc]
+  ASSIGNED_TO: [assigned to, assignee, owned by person]
+  ORIGINATED_IN: [raised in, came from, from meeting]

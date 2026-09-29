@@ -23,7 +23,7 @@ class Settings(BaseSettings):
 
     database_url: str = Field(default="postgresql+psycopg://brain:brain@localhost:5433/brain",
                               validation_alias="DATABASE_URL")
-    ontology_dir: Path = ROOT / "ontology" / "v1_3"
+    ontology_dir: Path = ROOT / "ontology"
     # Our own email domains: organizations on these domains get is_internal = true.
     internal_domains: list[str] = Field(default_factory=list)
 

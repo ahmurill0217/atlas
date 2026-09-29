@@ -16,14 +16,8 @@ from atlas.extraction.structured import StructuredExtractor
 from atlas.graph.queries import GraphQueries
 from atlas.ingestion.adapters import UnsupportedSource, normalize_file
 from atlas.ingestion.segmentation import Block, assemble, headed_blocks, split_long
-from atlas.ontology import load_ontology
 from atlas.pipeline import KnowledgeIngestionPipeline, segment
-from tests.v1.conftest import CORPUS, ROOT, candidate_set, edge, ent
-
-
-@pytest.fixture(scope="session")
-def ontology_v12():
-    return load_ontology(str(ROOT / "ontology" / "v1_2"))
+from tests.conftest import CORPUS, candidate_set, edge, ent
 
 
 # --- segmentation -----------------------------------------------------------------
@@ -129,23 +123,23 @@ def test_generic_json_adapter(tmp_path):
             normalize_file(tmp_path / "bad.json")
 
 
-def test_document_facts_from_structured_metadata(ontology_v12):
+def test_document_facts_from_structured_metadata(ontology):
     doc = normalize_file(CORPUS / "drive" / "atlas_pilot_plan.json")
-    cs = StructuredExtractor(ontology_v12, ["northwind.io"]).extract(doc, uuid.uuid4())
+    cs = StructuredExtractor(ontology, ["northwind.io"]).extract(doc, uuid.uuid4())
     edges = {(e.source_local_id, e.suggested_relation, e.target_local_id) for e in cs.edges}
     assert ("document", "AUTHORED_BY", "person:email:priya.shah@northwind.io") in edges
     assert {e.suggested_relation for e in cs.edges} == {"AUTHORED_BY", "WORKS_AT"}           # roles = metadata only
     assert "person:email:mike.rodriguez@northwind.io" in {e.local_id for e in cs.entities}   # owner still resolved
     assert any(p.role == "owner" for p in doc.participants)                                  # role kept in record
     pdf = normalize_file(CORPUS / "docs" / "Atlas_Security_Review.pdf")
-    pdf_cs = StructuredExtractor(ontology_v12).extract(pdf, uuid.uuid4())
+    pdf_cs = StructuredExtractor(ontology).extract(pdf, uuid.uuid4())
     assert [e.suggested_type for e in pdf_cs.entities] == ["Document"] and pdf_cs.edges == []
 
 
 # --- pipeline ------------------------------------------------------------------------
 
-def test_full_corpus_under_v12(kg, atlas_settings, ontology_v12):
-    report = KnowledgeIngestionPipeline(kg, atlas_settings, ontology_v12).ingest(CORPUS)
+def test_full_corpus(kg, atlas_settings, ontology):
+    report = KnowledgeIngestionPipeline(kg, atlas_settings, ontology).ingest(CORPUS)
     assert report.stats["documents_processed"] == 9 and "documents_failed" not in report.stats
     with Session(kg) as s:
         q = GraphQueries(s)
@@ -156,13 +150,13 @@ def test_full_corpus_under_v12(kg, atlas_settings, ontology_v12):
         assert {"Statement of Work: Atlas Rollout", "Atlas Security Review", "Atlas pilot plan"} <= titles
         assert q.list_reviews(review_type="NEW_ONTOLOGY_CANDIDATE") == []
         assert q.stats()["unsupported_edges"] == 0
-    again = KnowledgeIngestionPipeline(kg, atlas_settings, ontology_v12).ingest(CORPUS)
+    again = KnowledgeIngestionPipeline(kg, atlas_settings, ontology).ingest(CORPUS)
     assert again.stats["documents_unchanged"] == 9
 
 
-def test_text_evidence_records_pdf_page(kg, atlas_settings, ontology_v12):
+def test_text_evidence_records_pdf_page(kg, atlas_settings, ontology):
     """Evidence that points at a section inherits the section's page number."""
-    pipeline = KnowledgeIngestionPipeline(kg, atlas_settings, ontology_v12)
+    pipeline = KnowledgeIngestionPipeline(kg, atlas_settings, ontology)
     pipeline.ingest(CORPUS / "docs" / "Atlas_Security_Review.pdf")
     doc = normalize_file(CORPUS / "docs" / "Atlas_Security_Review.pdf")
     with Session(kg) as s:
@@ -170,7 +164,7 @@ def test_text_evidence_records_pdf_page(kg, atlas_settings, ontology_v12):
         finding = next(sec for sec in doc.sections if sec.text.startswith("1. SSO"))
         cand = edge(doc, vid, "tom", "acme", "WORKS_AT", "Tom Becker leads the review on the Acme side.")
         cand.evidence.section_ordinal = finding.ordinal
-        report = GraphCompiler(s, ontology_v12).compile(doc, candidate_set(doc, vid, [
+        report = GraphCompiler(s, ontology).compile(doc, candidate_set(doc, vid, [
             ent("tom", "Person", "Tom Becker", email="tom.becker@acme.com"),
             ent("acme", "Organization", "Acme Corp", domain="acme.com")], [cand]))
         assert report.edges == {"tom|WORKS_AT|acme": "ACCEPTED"}

@@ -8,17 +8,17 @@ rules encoded here:
   - email sender          -> Document AUTHORED_BY Person
   - email domain          -> Person WORKS_AT Organization, only when the trust
                              policy enables it, the domain is not generic and the
-                             address is not a bulk / mailing-list sender [ontology 1.3]
-  - email to/cc/bcc       -> Document SENT_TO Person (recipient_type)          [ontology 1.1]
-  - meeting action item   -> ActionItem ORIGINATED_IN Meeting, ASSIGNED_TO Person [ontology 1.1]
-  - document author/creator with an email -> Document AUTHORED_BY Person          [ontology 1.2]
-  - email address -> Person identity [ontology 1.3]: `mailbox` identifier at the
+                             address is not a bulk / mailing-list sender
+  - email to/cc/bcc       -> Document SENT_TO Person (recipient_type)
+  - meeting action item   -> ActionItem ORIGINATED_IN Meeting, ASSIGNED_TO Person
+  - document author/creator with an email -> Document AUTHORED_BY Person
+  - email address -> Person identity: `mailbox` identifier at the
     registrable domain (pallen@ect.enron.com == pallen@enron.com); "First Last" from a
     display name or a first.last address; organizations keyed by registrable domain
   - document owner / editor / viewer (e.g. Drive): kept as document metadata only
     (governance decision 2026-09-28), no edges proposed
 The extractor proposes the same candidates whatever the ontology version; under
-an ontology without a home for them (1.0) the compiler routes them to review.
+an ontology without a home for one, the compiler routes it to review.
 """
 
 from __future__ import annotations

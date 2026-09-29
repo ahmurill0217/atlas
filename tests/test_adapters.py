@@ -5,7 +5,7 @@ import pytest
 from atlas.ingestion.adapters import UnsupportedSource, normalize_file
 from atlas.ingestion.adapters.email_json import split_quoted
 from atlas.pipeline import segment
-from tests.v1.conftest import CORPUS
+from tests.conftest import CORPUS
 
 
 def test_email_normalization():

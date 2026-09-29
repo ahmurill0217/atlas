@@ -72,11 +72,6 @@ class GraphQueries:
         return _rows(self.session.execute(text(_EDGE + " WHERE g.target_entity_id = :id AND g.status = 'active' "
                                                "ORDER BY g.relation_type, s.canonical_name"), {"id": entity_id}))
 
-    def get_neighbors(self, entity_id: uuid.UUID) -> list[dict]:
-        ids = {e["target_id"] for e in self.get_outgoing_edges(entity_id)} | \
-              {e["source_id"] for e in self.get_incoming_edges(entity_id)}
-        return [self.get_entity(i) for i in sorted(ids - {entity_id})]
-
     def get_edges(self, source_type: str | None = None, relation: str | None = None,
                   target_type: str | None = None) -> list[dict]:
         where, params = ["g.status = 'active'"], {}
@@ -116,19 +111,6 @@ class GraphQueries:
         audit = _rows(self.session.execute(text(
             "SELECT at, actor, action, details FROM kg.audit_log WHERE object_id = :id ORDER BY id"), {"id": edge_id}))
         return {"edge": edges[0], "evidence": self.get_evidence(edge_id), "candidates": candidates, "audit": audit}
-
-    def get_entity_history(self, entity_id: uuid.UUID) -> dict:
-        audit = _rows(self.session.execute(text(
-            "SELECT at, actor, action, details FROM kg.audit_log WHERE object_id = :id ORDER BY id"), {"id": entity_id}))
-        candidates = _rows(self.session.execute(text(
-            """
-            SELECT c.local_id, c.decision, c.reason, c.mapped_type, d.source_system, d.source_external_id, c.created_at
-            FROM kg.candidate_entities c
-            JOIN kg.document_versions v ON v.id = c.document_version_id
-            JOIN kg.documents d ON d.id = v.document_id
-            WHERE c.entity_id = :id ORDER BY c.created_at
-            """), {"id": entity_id}))
-        return {"audit": audit, "resolutions": candidates}
 
     def list_reviews(self, status: str | None = "OPEN", review_type: str | None = None) -> list[dict]:
         where, params = ["TRUE"], {}

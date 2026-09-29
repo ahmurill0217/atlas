@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from atlas.graph.queries import GraphQueries
 from atlas.ontology import OntologyError
 from atlas.pipeline import KnowledgeIngestionPipeline
-from tests.v1.conftest import CORPUS
+from tests.conftest import CORPUS
 
 
 def snapshot(engine) -> dict:
@@ -46,16 +46,12 @@ def test_corpus_builds_expected_graph(kg, atlas_settings, ontology, phase1_corpu
         assert ("Mike Rodriguez", "MEMBER_OF", "AI Platform") in rels
         assert ("Sarah Chen", "WORKS_AT", "acme.com") in rels
         assert not any(r[1] == "WORKS_AT" and r[0] == "Dana Lee" for r in rels)
-        assert people["Sarah Chen"]["identifiers"] == {"email": "sarah.chen@acme.com"}
+        assert people["Sarah Chen"]["identifiers"] == {"email": "sarah.chen@acme.com", "mailbox": "sarah.chen@acme.com"}
         assert q.stats()["unsupported_edges"] == 0
         assert all(len(q.get_evidence(g["id"])) >= 1 for g in q.get_edges())
-        reviews = {r["review_type"]: r for r in q.list_reviews()}
-        assert reviews["NEW_ONTOLOGY_CANDIDATE"]["frequency"] >= 2
+        assert q.list_reviews(review_type="NEW_ONTOLOGY_CANDIDATE") == []        # every proposal has a home
         amb = [r for r in q.list_reviews(review_type="AMBIGUOUS_ENTITY_MATCH")]
         assert len(amb) == 1 and amb[0]["candidate_payload"]["name"] == "Sarah Chen"  # name-only Sarah not merged
-        kinds = {r["candidate_payload"].get("suggested_relation") or r["candidate_payload"].get("candidate_name")
-                 for r in q.list_reviews(review_type="NEW_ONTOLOGY_CANDIDATE")}
-        assert kinds == {"SENT_TO", "ActionItem"}
 
 
 def test_reingest_is_a_noop(kg, atlas_settings, ontology, phase1_corpus):

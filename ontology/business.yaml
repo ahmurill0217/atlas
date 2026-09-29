@@ -1,4 +1,4 @@
-# Ontology V1.0 — Business module.
+# Ontology — Business module.
 version: "1.0"
 module: business
 
@@ -38,6 +38,11 @@ entities:
     description: A broader strategic initiative that may contain projects.
     identity_fields: [external_id]
     properties: [canonical_name, description]
+
+  ActionItem:
+    description: A task someone committed to or was assigned (e.g. from a meeting).
+    identity_fields: [action_item_key, external_id]
+    properties: [description, status, due_date, source_system, recording_timestamp, playback_url]
 
   Opportunity:
     description: A sales or business opportunity.
@@ -82,6 +87,17 @@ relations:
     source: [Contract]
     target: [Organization]
     min_targets_per_source: 2   # checked as a completeness warning, not per edge
+
+  ASSIGNED_TO:
+    description: The action item is assigned to the person.
+    source: [ActionItem]
+    target: [Person]
+
+  ORIGINATED_IN:
+    description: The action item was raised in the meeting or document.
+    source: [ActionItem]
+    target: [Meeting, Document]
+    max_targets_per_source: 1
 
   USES_PRODUCT:
     description: The organization, team or project uses the product.

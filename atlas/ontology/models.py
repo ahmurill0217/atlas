@@ -60,7 +60,6 @@ class Policies(_Frozen):
     email_domain_employment: dict = Field(default_factory=dict)
     email_identity: dict = Field(default_factory=dict)
     resolution: dict[str, float] = Field(default_factory=dict)
-    normalization: dict = Field(default_factory=dict)
 
 
 class Ontology(_Frozen):
