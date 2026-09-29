@@ -12,7 +12,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 ROOT = Path(__file__).resolve().parents[1]
 
 PIPELINE_VERSION = "1.3.0-phase2"
-NORMALIZER_VERSION = "1.1.0"
+NORMALIZER_VERSION = "1.2.0"
 STRUCTURED_EXTRACTOR_VERSION = "1.3.0"
 RESOLVER_VERSION = "1.1.0"
 

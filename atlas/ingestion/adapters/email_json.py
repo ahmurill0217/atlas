@@ -16,8 +16,11 @@ from pathlib import Path
 from atlas.ingestion.adapters.base import UnsupportedSource, build_text
 from atlas.ingestion.normalized import NormalizedDocument, Participant, document_id_for
 
-# Where the quoted reply chain starts: "On <date>, <person> wrote:" or the first "> " line.
-_QUOTE_START = re.compile(r"^(On .{5,200}wrote:\s*$|>.*$|-{2,} ?Original Message ?-{2,})", re.MULTILINE)
+# Where the quoted reply chain or forwarded content starts: "On <date>, <person> wrote:",
+# the first "> " line, "-----Original Message-----", or a "--- Forwarded by ... ---"
+# banner (Outlook / Lotus Notes), allowing leading whitespace.
+_QUOTE_START = re.compile(r"^[ \t]*(On .{5,200}wrote:\s*$|>.*$|-{2,} ?Original Message ?-{2,}|-{2,} ?Forwarded by .*$)",
+                          re.MULTILINE)
 
 
 def _addresses(value, role: str, field: str) -> list[Participant]:

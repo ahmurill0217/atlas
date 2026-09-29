@@ -61,3 +61,11 @@ def test_text_and_unsupported(tmp_path):
 def test_split_quoted_variants():
     assert split_quoted("New text\n> old line") == ("New text", "> old line")
     assert split_quoted("Just text") == ("Just text", "")
+
+
+def test_split_quoted_handles_indented_and_forwarded_banners():
+    from atlas.ingestion.adapters.email_json import split_quoted
+    body = "Sounds good.\n\nPhillip\n\n -----Original Message-----\nFrom: \tTycholiz, B\nold text"
+    assert split_quoted(body) == ("Sounds good.\n\nPhillip", "-----Original Message-----\nFrom: \tTycholiz, B\nold text")
+    fwd = "FYI\n---------------------- Forwarded by John Arnold/HOU/ECT on 08/21/2000 12:26 PM ---------------------------\nbody"
+    assert split_quoted(fwd)[0] == "FYI"
