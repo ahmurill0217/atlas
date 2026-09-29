@@ -26,12 +26,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from pydantic import BaseModel  # noqa: E402
 
-from brain.config import get_settings  # noqa: E402
-from brain.db import session_scope  # noqa: E402
-from brain.embeddings import get_embedder  # noqa: E402
-from brain.llm import get_llm  # noqa: E402
-from brain.llm.openai_llm import OpenAIStructuredLLM  # noqa: E402
-from brain.qa import ask  # noqa: E402
+from brain_v0.config import get_settings  # noqa: E402
+from brain_v0.db import session_scope  # noqa: E402
+from brain_v0.embeddings import get_embedder  # noqa: E402
+from brain_v0.llm import get_llm  # noqa: E402
+from brain_v0.llm.openai_llm import OpenAIStructuredLLM  # noqa: E402
+from brain_v0.qa import ask  # noqa: E402
 
 JUDGE_PROMPT = """\
 You grade answers to questions about a small document collection.

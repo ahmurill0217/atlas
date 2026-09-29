@@ -1,7 +1,7 @@
 from alembic import context
 from sqlalchemy import create_engine
 
-from brain.config import get_settings
+from brain_v0.config import get_settings
 
 config = context.config
 

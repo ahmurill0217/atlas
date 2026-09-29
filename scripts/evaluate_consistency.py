@@ -28,13 +28,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
-from brain.config import get_settings  # noqa: E402
-from brain.db.admin import GRAPH_TABLES, SOURCE_TABLES, ensure_database, migrate, sibling_database_url, truncate  # noqa: E402
-from brain.evaluation.consistency import consistency_report, raw_snapshot, render_markdown  # noqa: E402
-from brain.evaluation.snapshot import export_snapshot  # noqa: E402
-from brain.llm import get_llm  # noqa: E402
-from brain.pipeline.build_brain import build  # noqa: E402
-from brain.pipeline.ingest import ingest_path  # noqa: E402
+from brain_v0.config import get_settings  # noqa: E402
+from brain_v0.db.admin import GRAPH_TABLES, SOURCE_TABLES, ensure_database, migrate, sibling_database_url, truncate  # noqa: E402
+from brain_v0.evaluation.consistency import consistency_report, raw_snapshot, render_markdown  # noqa: E402
+from brain_v0.evaluation.snapshot import export_snapshot  # noqa: E402
+from brain_v0.llm import get_llm  # noqa: E402
+from brain_v0.pipeline.build_brain import build  # noqa: E402
+from brain_v0.pipeline.ingest import ingest_path  # noqa: E402
 
 
 def print_summary(report: dict) -> None:

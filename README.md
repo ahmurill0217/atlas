@@ -44,32 +44,32 @@ cp .env.example .env
 uv run alembic upgrade head
 
 # 5. Load the sample corpus (offline: parse + chunk only)
-uv run python -m brain ingest examples/corpus
+uv run python -m brain_v0 ingest examples/corpus
 
 # 6. Embed + extract + resolve + persist
-uv run python -m brain build
+uv run python -m brain_v0 build
 
 # 7. Look around
-uv run python -m brain graph "KRAS G12C"
+uv run python -m brain_v0 graph "KRAS G12C"
 ```
 
-`uv run` runs a command inside the project's virtualenv. If you activate `.venv` yourself, the commands are the same without the prefix, for example `python -m brain build`.
+`uv run` runs a command inside the project's virtualenv. If you activate `.venv` yourself, the commands are the same without the prefix, for example `python -m brain_v0 build`.
 
 ## CLI
 
 ```bash
-uv run python -m brain ingest examples/corpus        # idempotent; changed files replace their chunks
-uv run python -m brain build                         # cached per chunk; --force re-extracts everything
-uv run python -m brain stats
-uv run python -m brain entities                      # --type Drug, --ambiguous
-uv run python -m brain relationships --evidence      # --type targets
-uv run python -m brain search "What compounds target KRAS G12C?"   # hybrid; --chunks-only, --json
-uv run python -m brain ask "Which trial supported the approval of Lumakras?"   # LLM answer with cited sources; --mode vector
-uv run python -m brain graph "Sotorasib"             # --depth 2
-uv run python -m brain why "Sotorasib" "KRAS G12C"   # evidence behind the edge(s)
-uv run python -m brain path "Amgen" "KRAS"           # shortest paths, max 3 hops
-uv run python -m brain reset                         # drop the graph, keep documents (--all for everything)
-uv run python -m brain reset --keep-extractions -y && uv run python -m brain build --replay
+uv run python -m brain_v0 ingest examples/corpus        # idempotent; changed files replace their chunks
+uv run python -m brain_v0 build                         # cached per chunk; --force re-extracts everything
+uv run python -m brain_v0 stats
+uv run python -m brain_v0 entities                      # --type Drug, --ambiguous
+uv run python -m brain_v0 relationships --evidence      # --type targets
+uv run python -m brain_v0 search "What compounds target KRAS G12C?"   # hybrid; --chunks-only, --json
+uv run python -m brain_v0 ask "Which trial supported the approval of Lumakras?"   # LLM answer with cited sources; --mode vector
+uv run python -m brain_v0 graph "Sotorasib"             # --depth 2
+uv run python -m brain_v0 why "Sotorasib" "KRAS G12C"   # evidence behind the edge(s)
+uv run python -m brain_v0 path "Amgen" "KRAS"           # shortest paths, max 3 hops
+uv run python -m brain_v0 reset                         # drop the graph, keep documents (--all for everything)
+uv run python -m brain_v0 reset --keep-extractions -y && uv run python -m brain_v0 build --replay
                                                      # re-run resolution/validation on cached LLM output
 ```
 

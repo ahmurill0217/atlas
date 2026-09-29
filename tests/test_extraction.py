@@ -3,10 +3,10 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from brain.extraction import ExtractedKnowledgeGraph, KnowledgeGraphExtractor
-from brain.extraction.extractor import clean_extraction
-from brain.extraction.models import constrained_schema
-from brain.normalize import (
+from brain_v0.extraction import ExtractedKnowledgeGraph, KnowledgeGraphExtractor
+from brain_v0.extraction.extractor import clean_extraction
+from brain_v0.extraction.models import constrained_schema
+from brain_v0.normalize import (
     compact_name,
     normalize_entity_type,
     normalize_name,
@@ -79,7 +79,7 @@ def test_normalizers():
 
 
 def test_output_too_long_splits_chunk_and_merges():
-    from brain.llm.base import OutputTooLongError
+    from brain_v0.llm.base import OutputTooLongError
 
     class TooLongForFullChunk:
         model_name = "fake"

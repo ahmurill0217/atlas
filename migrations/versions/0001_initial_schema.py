@@ -7,7 +7,7 @@ Create Date: 2026-09-27
 
 from alembic import op
 
-from brain.config import get_settings
+from brain_v0.config import get_settings
 
 revision = "0001"
 down_revision = None

@@ -69,3 +69,24 @@ def test_split_quoted_handles_indented_and_forwarded_banners():
     assert split_quoted(body) == ("Sounds good.\n\nPhillip", "-----Original Message-----\nFrom: \tTycholiz, B\nold text")
     fwd = "FYI\n---------------------- Forwarded by John Arnold/HOU/ECT on 08/21/2000 12:26 PM ---------------------------\nbody"
     assert split_quoted(fwd)[0] == "FYI"
+
+
+def test_split_quoted_handles_lotus_inline_replies():
+    from atlas.ingestion.adapters.email_json import split_quoted
+    body = "take me off your mailing list\n\n\n\nJobOpps@idrc.org on 09/05/2000 01:57:01 PM\nTo: jarnold@ei.enron.com\ncc:\nold"
+    assert split_quoted(body)[0] == "take me off your mailing list"
+    body2 = "Sounds good.\n\nJennifer Burns 10/12/2000 03:43 PM\n   To: John Arnold/HOU/ECT@ECT\nWell..."
+    assert split_quoted(body2)[0] == "Sounds good."
+    assert split_quoted("Meet at 10/12/2000 03:43 PM in room 5.\nThanks")[0].endswith("Thanks")  # no To: line
+
+
+def test_placeholder_dates_become_unknown():
+    from atlas.ingestion.adapters.email_json import EmailJsonAdapter
+    doc = EmailJsonAdapter().normalize(None, {"message_id": "m1", "from": "a@acme.com", "body": "hi",
+                                              "date": "1980-01-01T00:00:00+00:00"})
+    assert doc.created_at is None and doc.metadata["rejected_created_at"] == "1980-01-01T00:00:00+00:00"
+    ok = EmailJsonAdapter().normalize(None, {"message_id": "m2", "from": "a@acme.com", "body": "hi",
+                                             "date": "2001-05-14T23:39:00+00:00"})
+    assert ok.created_at.year == 2001 and "rejected_created_at" not in ok.metadata
+    assert doc.checksum() == EmailJsonAdapter().normalize(None, {"message_id": "m1", "from": "a@acme.com",
+                                                                 "body": "hi", "date": "1980-01-01T00:00:00+00:00"}).checksum()

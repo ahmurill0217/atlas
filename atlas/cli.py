@@ -152,6 +152,74 @@ def view(name: str = typer.Argument(None, help="Entity name or email to center o
 
 
 @app.command()
+def index(force: bool = typer.Option(False, "--force", help="Re-embed documents brain already has.")) -> None:
+    """Index every document's text into brain (OpenSearch + local embeddings)."""
+    from atlas.retrieval.brain_bridge import index_all
+
+    settings = get_settings()
+    with session_scope() as s:
+        stats = index_all(s, settings, force=force,
+                          progress=lambda st: typer.echo(f"  {st['documents']} documents ...", err=True)
+                          if st["documents"] % 1024 == 0 else None)
+    typer.echo(_dump(stats))
+
+
+def run_ask(question: str, use_graph: bool = True) -> dict:
+    """Answer one question; returns the answer, citations, scope and timings."""
+    import time
+
+    from brain import AccessScope, AnswerOptions
+    from brain.models.search import SearchFilters
+
+    from atlas.retrieval.ask import GraphContext, graph_context, system_prompt
+    from atlas.retrieval.brain_bridge import build_brain
+
+    settings = get_settings()
+    t0 = time.perf_counter()
+    with session_scope() as s:
+        ctx = graph_context(s, question) if use_graph else GraphContext()
+    graph_ms = (time.perf_counter() - t0) * 1000
+    brain = build_brain(settings)
+    options = AnswerOptions(force_search=True, system_prompt=system_prompt(ctx) if use_graph else None)
+    filters = SearchFilters(document_ids=ctx.document_ids) if ctx.document_ids else None
+    answer, cited, error, usage = [], [], None, None
+    for event in brain.answer(question, access=AccessScope(bypass=True), filters=filters, options=options):
+        kind = getattr(event, "type", "")
+        if kind == "answer_delta":
+            answer.append(event.text)
+        elif kind == "answer_done":
+            cited, usage = event.cited_documents, event.usage
+        elif kind == "answer_error":
+            error = event.message
+    return {"question": question, "mode": "graph" if use_graph else "baseline",
+            "entities": [{"name": e.name, "type": e.entity_type, "matched": e.matched} for e in ctx.entities],
+            "scope": ctx.scope, "scope_documents": len(ctx.document_ids), "facts": ctx.facts,
+            "answer": "".join(answer), "error": error,
+            "citations": [{"document_id": d.document_id, "title": d.semantic_identifier,
+                           "date": d.updated_at.isoformat() if d.updated_at else None} for d in cited],
+            "graph_ms": round(graph_ms), "seconds": round(time.perf_counter() - t0, 1),
+            "tokens": usage.model_dump() if usage else None}
+
+
+@app.command()
+def ask(question: str,
+        no_graph: bool = typer.Option(False, "--no-graph", help="Baseline: plain retrieval, no graph scope or facts."),
+        as_json: bool = typer.Option(False, "--json")) -> None:
+    """Answer a question: the graph scopes and profiles, brain retrieves and cites."""
+    result = run_ask(question, use_graph=not no_graph)
+    if as_json:
+        typer.echo(_dump(result))
+        return
+    if result["entities"]:
+        typer.echo("Entities: " + ", ".join(f"{e['name']} ({e['type']})" for e in result["entities"]))
+    typer.echo(f"Scope: {result['scope']}, {result['scope_documents'] or 'all'} documents\n")
+    typer.echo(result["error"] or result["answer"])
+    typer.echo("\nSources:")
+    for i, c in enumerate(result["citations"], 1):
+        typer.echo(f"  [{i}] {c['title']} ({(c['date'] or '')[:10]})  {c['document_id']}")
+
+
+@app.command()
 def reviews(status: str = typer.Option("OPEN"), review_type: str = typer.Option(None, "--type")) -> None:
     """List review items (most frequent first)."""
     with session_scope() as s:

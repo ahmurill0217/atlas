@@ -1,5 +1,5 @@
-from brain.chunking import chunk_text, count_tokens
-from brain.ingestion import parse_text
+from brain_v0.chunking import chunk_text, count_tokens
+from brain_v0.ingestion import parse_text
 
 TEXT = """# Title
 
@@ -54,7 +54,7 @@ def test_parser_normalizes_and_hashes():
 
 
 def test_pdf_text_cleanup_and_title_fallback():
-    from brain.ingestion.parser import _first_line, clean_pdf_text
+    from brain_v0.ingestion.parser import _first_line, clean_pdf_text
 
     assert clean_pdf_text("Trans-\nformer\tmodels use  atten-\ntion") == "Transformer models use attention"
     assert _first_line("Published as a conference paper at ICLR 2015\nNeural Machine Translation") == "Neural Machine Translation"
@@ -70,6 +70,6 @@ def test_special_token_strings_in_text_do_not_raise():
 
 
 def test_pdf_small_caps_are_repaired():
-    from brain.ingestion.parser import clean_pdf_text
+    from brain_v0.ingestion.parser import clean_pdf_text
 
     assert clean_pdf_text("our R/e.sc /t.sc /r.sc/o.sc model and B/e.sc /r.sc/t.sc") == "our RETRO model and BERT"

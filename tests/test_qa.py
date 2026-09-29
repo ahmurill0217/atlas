@@ -1,9 +1,9 @@
 from sqlalchemy.orm import Session
 
-from brain.embeddings import HashEmbedder
-from brain.pipeline.build_brain import build
-from brain.pipeline.ingest import ingest_path
-from brain.qa import GeneratedAnswer, ask
+from brain_v0.embeddings import HashEmbedder
+from brain_v0.pipeline.build_brain import build
+from brain_v0.pipeline.ingest import ingest_path
+from brain_v0.qa import GeneratedAnswer, ask
 from tests.conftest import FakeLLM
 from tests.test_idempotency import RESPONSES, corpus  # noqa: F401  (fixture)
 

@@ -1,7 +1,7 @@
 import pytest
 
-from brain.graph.repository import GraphRepository
-from brain.graph.traversal import GraphQueries
+from brain_v0.graph.repository import GraphRepository
+from brain_v0.graph.traversal import GraphQueries
 from tests.conftest import make_chunk
 
 

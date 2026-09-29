@@ -2,11 +2,11 @@ import uuid
 
 from sqlalchemy import select
 
-from brain.db.models import Relationship, RelationshipEvidence, ResolutionLog
-from brain.extraction.extractor import ExtractionResult
-from brain.extraction.models import ExtractedRelationship
-from brain.pipeline.build_brain import apply_extraction
-from brain.resolution.relationship_resolver import RelationshipValidator, ResolvedEndpoint
+from brain_v0.db.models import Relationship, RelationshipEvidence, ResolutionLog
+from brain_v0.extraction.extractor import ExtractionResult
+from brain_v0.extraction.models import ExtractedRelationship
+from brain_v0.pipeline.build_brain import apply_extraction
+from brain_v0.resolution.relationship_resolver import RelationshipValidator, ResolvedEndpoint
 from tests.conftest import ent, graph, make_chunk, rel
 
 CHUNK_1 = "Sotorasib, previously known as AMG 510, is a covalent inhibitor targeting KRAS G12C."

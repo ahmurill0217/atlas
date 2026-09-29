@@ -1,11 +1,11 @@
 from sqlalchemy import select
 
-from brain.db.models import Entity, ResolutionLog
-from brain.extraction.extractor import ExtractionResult
-from brain.graph.repository import GraphRepository
-from brain.pipeline.build_brain import apply_extraction
-from brain.resolution.entity_resolver import Decision, EntityResolver, acceptable_alias
-from brain.extraction.models import ExtractedEntity
+from brain_v0.db.models import Entity, ResolutionLog
+from brain_v0.extraction.extractor import ExtractionResult
+from brain_v0.graph.repository import GraphRepository
+from brain_v0.pipeline.build_brain import apply_extraction
+from brain_v0.resolution.entity_resolver import Decision, EntityResolver, acceptable_alias
+from brain_v0.extraction.models import ExtractedEntity
 from tests.conftest import ent, graph, make_chunk
 
 

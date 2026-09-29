@@ -5,7 +5,7 @@ This is a small knowledge "brain". Documents go in, and a knowledge graph with m
 ## Data flow
 
 ```
- python -m brain ingest <dir>                 (offline, deterministic, idempotent)
+ python -m brain_v0 ingest <dir>                 (offline, deterministic, idempotent)
  ───────────────────────────
  loader.discover_files  →  parser.parse_file  →  chunker.chunk_text
    sorted .txt/.md          NFC, newline norm,     paragraph → sentence packing,
@@ -14,7 +14,7 @@ This is a small knowledge "brain". Documents go in, and a knowledge graph with m
    documents (id = uuid5(source_uri), content_hash)   ── unchanged hash → skip
    chunks    (id = uuid5(doc, index, sha256(text)))   ── changed hash  → replace chunks
 
- python -m brain build                        (LLM + embeddings)
+ python -m brain_v0 build                        (LLM + embeddings)
  ─────────────────────
  1. embed chunks lacking an embedding (or embedded by another model) ─► chunks.embedding (HNSW)
  2. pending chunks = no chunk_extractions row for cache_key(model, prompt, ontology)

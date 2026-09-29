@@ -1,4 +1,4 @@
-from brain.evaluation.consistency import consistency_report, jaccard
+from brain_v0.evaluation.consistency import consistency_report, jaccard
 
 
 def snap(entities, rels):
@@ -32,7 +32,7 @@ def test_alias_aware_matching_and_type_direction_metrics():
 
 
 def test_raw_snapshot_keys_entities_by_name_and_keeps_all_edges():
-    from brain.evaluation.consistency import raw_snapshot
+    from brain_v0.evaluation.consistency import raw_snapshot
 
     run = {"raw_extractions": [
         {"output": {"entities": [{"local_id": "a", "name": "Sotorasib", "entity_type": "Drug", "aliases": ["AMG 510"]},

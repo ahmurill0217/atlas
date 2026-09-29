@@ -1,9 +1,9 @@
 from sqlalchemy.orm import Session
 
-from brain.embeddings import HashEmbedder
-from brain.pipeline.build_brain import build
-from brain.pipeline.ingest import ingest_path
-from brain.search import hybrid_search, search_chunks
+from brain_v0.embeddings import HashEmbedder
+from brain_v0.pipeline.build_brain import build
+from brain_v0.pipeline.ingest import ingest_path
+from brain_v0.search import hybrid_search, search_chunks
 from tests.conftest import FakeLLM
 from tests.test_idempotency import RESPONSES, corpus  # noqa: F401  (fixture)
 
@@ -28,7 +28,7 @@ def test_semantic_and_hybrid_search_preserve_provenance(db, settings, corpus):  
 
 
 def test_changing_embedder_triggers_reembedding(db, settings, corpus):  # noqa: F811
-    from brain.pipeline.build_brain import embed_pending_chunks
+    from brain_v0.pipeline.build_brain import embed_pending_chunks
 
     other = HashEmbedder(settings.embedding_dim)
     other.name = "other-model"

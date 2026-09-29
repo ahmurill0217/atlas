@@ -3,10 +3,10 @@
 import pytest
 from sqlalchemy.orm import Session
 
-from brain.embeddings import HashEmbedder
-from brain.graph.traversal import GraphQueries
-from brain.pipeline.build_brain import build
-from brain.pipeline.ingest import ingest_path
+from brain_v0.embeddings import HashEmbedder
+from brain_v0.graph.traversal import GraphQueries
+from brain_v0.pipeline.build_brain import build
+from brain_v0.pipeline.ingest import ingest_path
 from tests.conftest import FakeLLM, ent, rel
 
 DOC_A = "# Sotorasib\n\nSotorasib, previously known as AMG 510, is a covalent inhibitor targeting KRAS G12C."
@@ -93,7 +93,7 @@ def test_changed_document_replaces_chunks_and_prunes_stale_edges(db, settings, c
 
 
 def test_replay_reapplies_cached_extractions_without_llm_calls(db, settings, corpus):
-    from brain.db.admin import GRAPH_TABLES, truncate
+    from brain_v0.db.admin import GRAPH_TABLES, truncate
 
     _ingest(db, corpus, settings)
     llm = FakeLLM(RESPONSES)

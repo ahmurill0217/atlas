@@ -7,10 +7,10 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from brain.config import Settings, get_settings
-from brain.db.admin import GRAPH_TABLES, SOURCE_TABLES, ensure_database, migrate, sibling_database_url, truncate
-from brain.extraction.models import ExtractedKnowledgeGraph
-from brain.pipeline.build_brain import PendingChunk
+from brain_v0.config import Settings, get_settings
+from brain_v0.db.admin import GRAPH_TABLES, SOURCE_TABLES, ensure_database, migrate, sibling_database_url, truncate
+from brain_v0.extraction.models import ExtractedKnowledgeGraph
+from brain_v0.pipeline.build_brain import PendingChunk
 
 
 def _test_url() -> str:
@@ -82,8 +82,8 @@ def graph(entities, relationships=()) -> ExtractedKnowledgeGraph:
 
 def make_chunk(session: Session, content: str, source_uri: str = "doc.md", index: int = 0) -> PendingChunk:
     """Insert a document+chunk row and return it as a PendingChunk."""
-    from brain.db.models import Chunk, Document
-    from brain.pipeline.ingest import chunk_id_for, document_id_for
+    from brain_v0.db.models import Chunk, Document
+    from brain_v0.pipeline.ingest import chunk_id_for, document_id_for
 
     doc_id = document_id_for(source_uri)
     if session.get(Document, doc_id) is None:

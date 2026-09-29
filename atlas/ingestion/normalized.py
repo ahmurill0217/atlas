@@ -11,7 +11,13 @@ import json
 import uuid
 from datetime import datetime, timezone
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+# Source times before this are placeholders, not real dates (e.g. exports that
+# write 1980-01-01 00:00 when a message has no Date header). Deterministic on purpose:
+# no "not in the future" check, which would make a document's checksum depend on
+# when it was ingested.
+EARLIEST_PLAUSIBLE_DATE = datetime(1990, 1, 1, tzinfo=timezone.utc)
 
 DOCUMENT_NAMESPACE = uuid.UUID("0b9d3c1e-5a52-4d7e-9a40-6c1f0a8e2b77")
 
@@ -61,6 +67,16 @@ class NormalizedDocument(BaseModel):
     def _utc(cls, value: datetime | None) -> datetime | None:
         """Source times without a zone are taken as UTC so comparisons are always valid."""
         return value.replace(tzinfo=timezone.utc) if value and value.tzinfo is None else value
+
+    @model_validator(mode="after")
+    def _implausible_dates(self) -> "NormalizedDocument":
+        """A placeholder date becomes unknown; the raw value is kept in metadata."""
+        for name in ("created_at", "updated_at"):
+            value = getattr(self, name)
+            if value is not None and value < EARLIEST_PLAUSIBLE_DATE:
+                self.metadata[f"rejected_{name}"] = value.isoformat()
+                object.__setattr__(self, name, None)
+        return self
 
     def checksum(self) -> str:
         """Content checksum: same source content => same checksum => no-op re-ingest."""
