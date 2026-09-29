@@ -1,0 +1,7 @@
+Oncology news digest (synthetic)
+
+Amgen's Lumakras became the first approved therapy directed at a KRAS mutation when the FDA cleared it for KRAS G12C-positive non-small cell lung cancer in 2021. The approval rested on data from the CodeBreaK 100 study.
+
+Researchers note that AMG 510 selectively inhibits KRAS G12C while sparing wild-type KRAS. Mirati's MRTX849, now called adagrasib, followed as the second KRAS G12C inhibitor to reach the market.
+
+Both sotorasib and adagrasib are being studied in combination with other agents, including EGFR antibodies such as cetuximab in colorectal cancer.
