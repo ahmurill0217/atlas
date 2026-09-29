@@ -20,7 +20,7 @@ app = typer.Typer(add_completion=False)
 
 @app.command()
 def main(questions: Path, out: Path, only: str = typer.Option("", help="Comma-separated question ids"),
-         modes: str = typer.Option("facts,baseline", help="graph (profile + boost), facts (profile only), baseline")):
+         modes: str = typer.Option("facts,baseline", help="graph (profile + boost), facts (profile only), graph_only (facts, no retrieval), baseline")):
     qs = json.loads(questions.read_text())
     wanted = {q.strip() for q in only.split(",") if q.strip()}
     results = json.loads(out.read_text()) if out.exists() else {}
@@ -29,11 +29,13 @@ def main(questions: Path, out: Path, only: str = typer.Option("", help="Comma-se
         if wanted and q["id"] not in wanted:
             continue
         for mode in [m.strip() for m in modes.split(",") if m.strip()]:
-            use_graph, boost = {"graph": (True, True), "facts": (True, False), "baseline": (False, False)}[mode]
+            use_graph, boost = {"graph": (True, True), "facts": (True, False), "baseline": (False, False),
+                                "graph_only": (True, False)}[mode]
             key = f"{q['id']}:{mode}"
             if key in results and not results[key].get("error"):
                 continue
-            r = run_ask(q["question"], use_graph=use_graph, boost=boost)
+            r = run_ask(q["question"], use_graph=use_graph, boost=boost,
+                        mode="graph_only" if mode == "graph_only" else None)
             results[key] = {**r, "id": q["id"], "type": q["type"], "key_points": q["key_points"]}
             out.write_text(json.dumps(results, indent=1, default=str))
             typer.echo(f"{key:14s} scope={r['scope_documents']:5d} cited={len(r['citations']):2d} "

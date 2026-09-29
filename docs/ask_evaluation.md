@@ -79,3 +79,45 @@ The baseline answers were reused from round 1. Raw answers are in `runs/enron/as
 
 - **Default:** brain retrieval over emails whose headers carry graph-resolved names, plus the graph profile of the people named. The graph earns its place through identity resolution and profiles, not by narrowing search.
 - **Not yet tested:** questions only the graph can answer well, where search should struggle. For example: who at Bank of America have we dealt with; when did we last talk to X; who introduced us; everyone on the Bishop's Corner deal. The next question set should cover those. So should a larger corpus, where names in the text stop being enough to find the right emails.
+
+## Round 3: relationship questions
+
+- **Questions:** 10 in `examples/qa/enron_relationship_questions.json`: who at a company, first/last contact, top correspondents, counts each way, "have they ever", external contacts.
+- **Expected answers:** computed from the raw email headers (`runs/enron/json_5k`) independently of Atlas, so the graph is not graded against itself.
+- **Raw answers:** `runs/enron/ask/relationships.json` and `relationships_v2.json`.
+
+**New graph facts:**
+- **Two people:** volume each way, first and last contact, or an explicit "no emails together".
+- **A company and a person:** who at that company the person dealt with, with counts and dates.
+- **Each person's top contacts outside the organization,** with last contact.
+- **Multi-word company names** link to their domain ("Bank of America" → bankofamerica.com).
+
+| Mode (gpt-4o-mini) | Correct | Partly | Wrong |
+|---|---|---|---|
+| Plain brain retrieval | 2 | 2 | 5 |
+| brain + graph facts in the system prompt | 5 | 3 | 1 |
+| Graph facts only, no retrieval | 8 | 1 | 0 |
+
+r9 is left out: the expected answer counted co-recipients on a distribution list as Frank Ermis's correspondents, and the graph counts only people he wrote to or heard from. The graph's definition is arguably the right one.
+
+- **Plain retrieval can't count or enumerate.** It sees a sample of emails.
+  - "How many did Fraser send Arnold?" → 10 and 0; the right answer is 21 and 113.
+  - "Top correspondents" → the people who happened to be retrieved.
+  - "People at Dynegy" → 3; the right answer is 1.
+- **With the facts in brain's prompt, the model still recounted from retrieved emails for dates and lists** (r6, r7, r8), even when told the facts are complete. The retrieved emails arrive after the system prompt and win.
+- **Answering from the graph alone is exact.** Remaining imperfections:
+  - **r1:** Steve Lafontaine appears as three "people" (three Bank of America addresses the graph did not link).
+  - **r8:** a quote service is listed among contacts.
+  - Both are identity/data issues, not answering issues.
+
+## Conclusion across all three rounds
+
+The two systems answer different kinds of question:
+
+| Question kind | Best route |
+|---|---|
+| What was said (content) | brain retrieval, with the graph profile as context |
+| Who / how many / how often / when / who at a company (relationships) | the graph directly |
+| Mixed (call prep, deal history) | the graph for people and timeline, brain for content |
+
+Next: a router in `atlas ask` that sends each question (or each part of it) to the right route, then a mixed question set.

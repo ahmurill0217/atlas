@@ -2,8 +2,9 @@
 
   1. link   people / organizations named in the question to graph entities.
             Conservative: a person needs a full name, alias or email address (a
-            single word like "Bob" never links a person); a capitalized word may
-            link a company whose domain label it is. Uncertain -> no link.
+            single word like "Bob" never links a person); capitalized words may
+            link a company whose domain label they spell ("Prebon" -> prebon.com,
+            "Bank of America" -> bankofamerica.com). Uncertain -> no link.
   2. boost  (opt-in, `--boost`) the documents those entities appear on (AUTHORED_BY / SENT_TO; for an
             external organization, the documents of its people). Several people:
             the documents they share, else all of theirs. Internal organizations
@@ -12,8 +13,11 @@
             filter lost threads *about* a person that they were not on; the boost
             still crowded them out; the profile alone matched plain retrieval and
             added identity, so the profile without boost is the default.
-  3. facts  a short metadata profile per entity: addresses, employer, volume,
-            active period, frequent correspondents, recent subjects
+  3. facts  a metadata profile per entity (addresses, employer, volume, active
+            period, frequent correspondents inside and outside the organization
+            with last contact, recent conversations); for two people, their
+            volume each way and first / last contact; for a company and a person,
+            who there the person has dealt with
   4. answer brain searches the whole index with the boost and answers with
             citations; the facts ride in the system prompt, labelled as metadata
 
@@ -91,6 +95,11 @@ def link_entities(s: Session, question: str) -> list[LinkedEntity]:
                 FROM kg.entities e LEFT JOIN kg.entity_aliases a ON a.entity_id = e.id
                 WHERE e.status = 'active' AND e.entity_type IN ('Person', 'Organization')
                   AND (e.normalized_name = :k OR a.normalized_alias = :k)"""), {"k": key}).all()
+            if not rows and capitalized:
+                # A multi-word company name whose words make its domain label: Bank of America -> bankofamerica.com
+                rows = s.execute(text("""SELECT e.id, e.entity_type, e.canonical_name, e.properties FROM kg.entities e
+                    JOIN kg.entity_external_ids x ON x.entity_id = e.id AND x.identifier_type = 'domain'
+                    WHERE e.status = 'active' AND split_part(x.value, '.', 1) = :k"""), {"k": key.replace(" ", "")}).all()
         elif capitalized and len(key) >= 3:
             # One capitalized word never names a person ("Bob", "Jacques" are too
             # ambiguous); it may name a company whose domain label it is.
@@ -161,14 +170,21 @@ def person_facts(s: Session, e: LinkedEntity) -> str:
           AND (au.target_entity_id = :i OR au.target_entity_id IN (SELECT p FROM contacts))
           AND d.properties->>'created_at' >= :floor_s"""),
                        {"i": e.id, "floor_s": EARLIEST_PLAUSIBLE_DATE.isoformat()}).one()
-    peers = s.execute(text(_CONTACTS + """,
+    peers_sql = text(_CONTACTS + """,
          mine AS (SELECT source_entity_id AS doc FROM kg.edges WHERE target_entity_id = :i
                   AND relation_type IN ('AUTHORED_BY', 'SENT_TO'))
-        SELECT p.canonical_name, count(DISTINCT g.source_entity_id) AS n FROM kg.edges g
+        SELECT p.canonical_name, count(DISTINCT g.source_entity_id) AS n,
+               max(d.properties->>'created_at') AS last FROM kg.edges g
         JOIN mine ON mine.doc = g.source_entity_id JOIN contacts t ON t.p = g.target_entity_id
-        JOIN kg.entities p ON p.id = g.target_entity_id
+        JOIN kg.entities p ON p.id = g.target_entity_id JOIN kg.entities d ON d.id = g.source_entity_id
         WHERE g.relation_type IN ('AUTHORED_BY', 'SENT_TO')
-        GROUP BY p.canonical_name ORDER BY n DESC LIMIT 8"""), {"i": e.id}).all()
+          AND (NOT :external OR NOT EXISTS (
+              SELECT 1 FROM kg.edges w JOIN kg.entities o ON o.id = w.target_entity_id
+              WHERE w.source_entity_id = p.id AND w.relation_type = 'WORKS_AT'
+                AND (o.properties->>'is_internal')::boolean))
+        GROUP BY p.canonical_name ORDER BY n DESC LIMIT 8""")
+    peers = s.execute(peers_sql, {"i": e.id, "external": False}).all()
+    external = s.execute(peers_sql, {"i": e.id, "external": True}).all()
     contacts = s.execute(text(_CONTACTS + " SELECT count(*) FROM contacts"), {"i": e.id}).scalar()
     subjects = s.execute(text(_CONTACTS + """
         SELECT DISTINCT d.canonical_name, d.properties->>'created_at' AS at FROM kg.edges g
@@ -183,8 +199,10 @@ def person_facts(s: Session, e: LinkedEntity) -> str:
              f"  Emails sent: {vol.sent}, received: {vol.received}; active {(active.first or '?')[:10]} to "
              f"{(active.last or '?')[:10]}; "
              f"contacts: {contacts}.",
-             "  Most frequent correspondents: "
-             + (", ".join(f"{p.canonical_name} ({p.n})" for p in peers) or "none"),
+             "  Most frequent correspondents (emails together, last contact): "
+             + (", ".join(f"{p.canonical_name} ({p.n}, last {(p.last or '?')[:10]})" for p in peers) or "none"),
+             "  Most frequent correspondents outside our organization: "
+             + (", ".join(f"{p.canonical_name} ({p.n}, last {(p.last or '?')[:10]})" for p in external) or "none"),
              "  Most recent conversations: "
              + ("; ".join(f"\"{r.canonical_name}\" ({(r.at or '')[:10]})" for r in subjects) or "none")]
     return "\n".join(lines)
@@ -203,6 +221,50 @@ def org_facts(s: Session, e: LinkedEntity) -> str:
             + ", ".join(f"{p.canonical_name} ({p.n} emails)" for p in people))
 
 
+_BETWEEN = text("""
+    SELECT count(DISTINCT d.id) AS total,
+           count(DISTINCT d.id) FILTER (WHERE fa.target_entity_id = ANY(:a) AND tb.target_entity_id = ANY(:b)) AS a_to_b,
+           count(DISTINCT d.id) FILTER (WHERE fa.target_entity_id = ANY(:b) AND tb.target_entity_id = ANY(:a)) AS b_to_a,
+           min(d.properties->>'created_at') FILTER (WHERE d.properties->>'created_at' >= :floor_s) AS first,
+           max(d.properties->>'created_at') FILTER (WHERE d.properties->>'created_at' >= :floor_s) AS last
+    FROM kg.entities d
+    JOIN kg.edges ea ON ea.source_entity_id = d.id AND ea.target_entity_id = ANY(:a)
+         AND ea.relation_type IN ('AUTHORED_BY', 'SENT_TO', 'HAS_PARTICIPANT', 'ATTENDED')
+    JOIN kg.edges eb ON eb.source_entity_id = d.id AND eb.target_entity_id = ANY(:b)
+         AND eb.relation_type IN ('AUTHORED_BY', 'SENT_TO', 'HAS_PARTICIPANT', 'ATTENDED')
+    LEFT JOIN kg.edges fa ON fa.source_entity_id = d.id AND fa.relation_type = 'AUTHORED_BY'
+    LEFT JOIN kg.edges tb ON tb.source_entity_id = d.id AND tb.relation_type = 'SENT_TO'
+    WHERE d.entity_type IN ('Document', 'Meeting')""")
+
+
+def pair_facts(s: Session, a: LinkedEntity, b: LinkedEntity) -> str:
+    """How two people relate in the metadata: volume each way, first and last contact."""
+    r = s.execute(_BETWEEN, {"a": [a.id], "b": [b.id], "floor_s": EARLIEST_PLAUSIBLE_DATE.isoformat()}).one()
+    if not r.total:
+        return f"- {a.name} and {b.name}: no emails or meetings together in the corpus."
+    return (f"- {a.name} and {b.name}: {r.total} emails/meetings together; {a.name} wrote to {b.name} "
+            f"{r.a_to_b} times, {b.name} wrote to {a.name} {r.b_to_a} times; first contact "
+            f"{(r.first or '?')[:10]}, last contact {(r.last or '?')[:10]}.")
+
+
+def org_person_facts(s: Session, org: LinkedEntity, person: LinkedEntity) -> str:
+    """Who at an organization a person has dealt with, with volume and dates."""
+    rows = []
+    for pid in people_of(s, org.id):
+        r = s.execute(_BETWEEN, {"a": [person.id], "b": [pid], "floor_s": EARLIEST_PLAUSIBLE_DATE.isoformat()}).one()
+        if r.total:
+            name = s.execute(text("SELECT canonical_name FROM kg.entities WHERE id = :i"), {"i": pid}).scalar()
+            email = s.execute(text("""SELECT min(value) FROM kg.entity_external_ids WHERE entity_id = :i
+                AND identifier_type = 'email'"""), {"i": pid}).scalar()
+            rows.append((r.total, name, email, r.first, r.last))
+    if not rows:
+        return f"- People at {org.name} who have dealt with {person.name}: none in the corpus."
+    rows.sort(key=lambda x: -x[0])
+    return (f"- People at {org.name} who have dealt with {person.name} ({len(rows)} addresses; one person may use "
+            "several): " + "; ".join(f"{name} <{email}> ({n} emails, {(first or '?')[:10]} to {(last or '?')[:10]})"
+                                     for n, name, email, first, last in rows[:15]))
+
+
 def graph_context(s: Session, question: str) -> GraphContext:
     ctx = GraphContext(entities=link_entities(s, question))
     people = [e for e in ctx.entities if e.entity_type == "Person"]
@@ -217,6 +279,8 @@ def graph_context(s: Session, question: str) -> GraphContext:
             ctx.scope = "entity"
         ctx.document_ids = sorted(docs)[:MAX_SCOPE]
     facts = [person_facts(s, e) if e.entity_type == "Person" else org_facts(s, e) for e in ctx.entities]
+    facts += [pair_facts(s, a, b) for i, a in enumerate(people) for b in people[i + 1:]]
+    facts += [org_person_facts(s, o, p) for o in external_orgs for p in people]
     ctx.facts = "\n".join(facts)
     return ctx
 
@@ -225,8 +289,11 @@ SYSTEM_SUFFIX = """
 
 # Knowledge graph context
 The documents are emails. Every search result begins with its From / To / Cc / Date / Subject lines.
-The facts below come from email metadata (who wrote to whom, and when). They are reliable for who
-and when, but say nothing about content; use the search results for what was said, and cite them.
+The facts below are computed from the metadata of EVERY email in the corpus: all senders, recipients
+and dates, with one person's several addresses already combined. Search results are only a sample.
+- For who someone deals with, how many emails, how often, who at a company, and first or last contact,
+  answer from these facts. They are complete; do not recount from search results.
+- The facts say nothing about content. For what was said, use the search results and cite them.
 {scope}
 {facts}
 """
@@ -239,3 +306,24 @@ def system_prompt(ctx: GraphContext) -> str:
              "rank first. Emails about a person that they are not on can matter too."
              if ctx.document_ids else "Search covers every email.")
     return DEFAULT_SYSTEM_PROMPT + SYSTEM_SUFFIX.format(scope=scope, facts=ctx.facts or "(no entities recognized)")
+
+
+GRAPH_ONLY_PROMPT = """You answer questions about people and their email relationships using ONLY the
+facts below. They are computed from the metadata of every email in the corpus (senders, recipients,
+dates), with one person's several addresses already combined. They say nothing about what emails said.
+Answer exactly from the facts: names, counts and dates as given. If the facts do not answer the
+question, say so plainly instead of guessing.
+
+{facts}
+"""
+
+
+def answer_from_graph(question: str, ctx: GraphContext, api_key: str, model: str) -> str:
+    """The relationship route: the answer comes from graph facts alone, no retrieval."""
+    from openai import OpenAI
+
+    response = OpenAI(api_key=api_key).chat.completions.create(
+        model=model, temperature=0,
+        messages=[{"role": "system", "content": GRAPH_ONLY_PROMPT.format(facts=ctx.facts or "(no entities recognized)")},
+                  {"role": "user", "content": question}])
+    return response.choices[0].message.content or ""

@@ -164,9 +164,10 @@ def index(force: bool = typer.Option(False, "--force", help="Re-embed documents 
     typer.echo(_dump(stats))
 
 
-def run_ask(question: str, use_graph: bool = True, boost: bool = False) -> dict:
+def run_ask(question: str, use_graph: bool = True, boost: bool = False, mode: str | None = None) -> dict:
     """Answer one question; returns the answer, citations, scope and timings.
-    use_graph adds the metadata profile; boost also ranks the entities' documents first."""
+    use_graph adds the metadata profile; boost also ranks the entities' documents first;
+    mode="graph_only" answers from the graph facts alone, with no retrieval."""
     import time
 
     from brain import AccessScope, AnswerOptions
@@ -181,6 +182,14 @@ def run_ask(question: str, use_graph: bool = True, boost: bool = False) -> dict:
     if not boost:
         ctx.document_ids = []          # profile only: search is left untouched
     graph_ms = (time.perf_counter() - t0) * 1000
+    if mode == "graph_only":
+        from atlas.retrieval.ask import answer_from_graph
+        answer = answer_from_graph(question, ctx, settings.openai_api_key, settings.ask_model)
+        return {"question": question, "mode": mode,
+                "entities": [{"name": e.name, "type": e.entity_type, "matched": e.matched} for e in ctx.entities],
+                "scope": ctx.scope, "scope_documents": 0, "facts": ctx.facts, "answer": answer, "error": None,
+                "citations": [], "graph_ms": round(graph_ms), "seconds": round(time.perf_counter() - t0, 1),
+                "tokens": None}
     brain = build_brain(settings, boost_document_ids=ctx.document_ids)
     options = AnswerOptions(force_search=True, system_prompt=system_prompt(ctx) if use_graph else None)
     answer, cited, error, usage = [], [], None, None

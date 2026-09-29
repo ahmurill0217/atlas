@@ -1,0 +1,22 @@
+[
+  {"id": "r1", "type": "relationship", "question": "Who at Bank of America has John Arnold emailed with?",
+   "key_points": ["Steve Lafontaine (steve.lafontaine@, stevelafontaine@, lafontaine@bankofamerica.com: 26 + 4 + 2 emails); nobody else"]},
+  {"id": "r2", "type": "relationship", "question": "When did John Arnold first and last email Steve Lafontaine at Bank of America?",
+   "key_points": ["first 2001-05-04, last 2001-12-11 (steve.lafontaine@bankofamerica.com, 26 emails)"]},
+  {"id": "r3", "type": "relationship", "question": "Who are Phillip Allen's five most frequent correspondents?",
+   "key_points": ["Keith Holst 86, Mike Grigsby 84, Frank Ermis 65, Ina Rangel 57, Matthew Lenhart 55 (raw headers, his four main addresses)"]},
+  {"id": "r4", "type": "relationship", "question": "How many emails did Jennifer Fraser send to John Arnold, and how many did John Arnold send to Jennifer Fraser?",
+   "key_points": ["Fraser -> Arnold 21; Arnold -> Fraser 113"]},
+  {"id": "r5", "type": "relationship", "question": "Has Mike Grigsby ever emailed Steve Lafontaine?",
+   "key_points": ["No: zero emails with both of them"]},
+  {"id": "r6", "type": "relationship", "question": "When did Phillip Allen first and last exchange email with Keith Holst?",
+   "key_points": ["first 2000-02-09, last 2001-05-14 (86 emails)"]},
+  {"id": "r7", "type": "relationship", "question": "Which people at Prebon has John Arnold dealt with?",
+   "key_points": ["jpetriello@prebon.com and bschaeffer@prebon.com (Brad Schaeffer), one email each"]},
+  {"id": "r8", "type": "relationship", "question": "Who are John Arnold's most frequent contacts outside Enron?",
+   "key_points": ["epao@mba2002.hbs.edu 72, slafontaine@globalp.com 62, jenwhite7@zdnetonebox.com 34, steve.lafontaine@bankofamerica.com 26, fzerilli@powermerchants.com 22, msagel@home.com 21, klarnold@flash.net 18 (dailyquote / concur / buy.com are services)"]},
+  {"id": "r9", "type": "relationship", "question": "Which companies outside Enron does Frank Ermis correspond with most?",
+   "key_points": ["about 30 emails each with Duke Energy, Clark PUD, Coral Energy, Engage Energy, NW Natural, Kimball Energy (a recurring distribution list)"]},
+  {"id": "r10", "type": "relationship", "question": "How many people at Dynegy has John Arnold exchanged email with?",
+   "key_points": ["one address: pfse@dynegy.com, one email"]}
+]

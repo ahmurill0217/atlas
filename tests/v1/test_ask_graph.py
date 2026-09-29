@@ -32,7 +32,7 @@ def test_scope_and_profile_leave_out_broadcast_mail_and_placeholder_dates(mailbo
         ctx = graph_context(s, "What do I know about Phillip Allen?")
     assert [e.name for e in ctx.entities] == ["Phillip Allen"]
     assert len(ctx.document_ids) == 3                       # the Pizza Hut broadcast is out of scope
-    assert "Keith Holst (2)" in ctx.facts and "Mike Grigsby (1)" in ctx.facts
+    assert "Keith Holst (2, last 2001-03-15)" in ctx.facts and "Mike Grigsby (1, last ?)" in ctx.facts
     assert "Pizza" not in ctx.facts and "Phillip Allen (1" not in ctx.facts  # no broadcasts, not himself
     assert "active 2001-03-14 to 2001-03-15" in ctx.facts                  # 1980 placeholder ignored
 
@@ -81,3 +81,25 @@ def test_boost_ranks_graph_documents_first_without_hiding_the_rest(monkeypatch):
     ranked = [c.document_id for c in searcher._run_searches([("q", 1.0, None)], IndexFilters(access_control_list=None), 10)]
     assert ranked[:2] == ["mine-2", "mine-1"] or ranked[:2] == ["mine-1", "mine-2"]   # graph documents first
     assert set(ranked) == {"about-him", "mine-1", "other", "mine-2"}                    # nothing hidden
+
+
+def test_relationship_facts(kg, atlas_settings, tmp_path):
+    msgs = [("john.arnold@enron.com", ["steve.lafontaine@bankofamerica.com"], "mkts", "2001-05-04T10:00:00Z"),
+            ("steve.lafontaine@bankofamerica.com", ["john.arnold@enron.com"], "re: mkts", "2001-12-11T10:00:00Z"),
+            ("mike.grigsby@enron.com", ["john.arnold@enron.com"], "desk", "2001-06-01T10:00:00Z")]
+    for i, (sender, to, subject, date) in enumerate(msgs):
+        (tmp_path / f"{i}.json").write_text(json.dumps({"source_system": "test", "message_id": f"r{i}", "from": sender,
+                                                        "to": to, "subject": subject, "date": date, "body": "x"}))
+    settings = atlas_settings.model_copy(update={"internal_domains": ["enron.com"]})
+    KnowledgeIngestionPipeline(kg, settings, load_ontology(str(ROOT / "ontology" / "v1_3"))).ingest(tmp_path)
+    with Session(kg) as s:
+        bofa = graph_context(s, "Who at Bank of America has John Arnold emailed with?")
+        pair = graph_context(s, "Has Mike Grigsby ever emailed Steve Lafontaine?")
+        arnold = graph_context(s, "When did John Arnold and Steve Lafontaine last talk?")
+    assert {e.name for e in bofa.entities} == {"John Arnold", "bankofamerica.com"}
+    assert ("People at bankofamerica.com who have dealt with John Arnold (1 addresses; one person may use several): "
+            "Steve Lafontaine <steve.lafontaine@bankofamerica.com> (2 emails, 2001-05-04 to 2001-12-11)") in bofa.facts
+    assert "Mike Grigsby and Steve Lafontaine: no emails or meetings together in the corpus." in pair.facts
+    assert ("John Arnold wrote to Steve Lafontaine 1 times, Steve Lafontaine wrote to John Arnold 1 times; "
+            "first contact 2001-05-04, last contact 2001-12-11") in arnold.facts
+    assert "outside our organization: Steve Lafontaine (2, last 2001-12-11)" in arnold.facts
