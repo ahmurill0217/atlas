@@ -134,9 +134,9 @@ def test_document_facts_from_structured_metadata(ontology_v12):
     cs = StructuredExtractor(ontology_v12, ["northwind.io"]).extract(doc, uuid.uuid4())
     edges = {(e.source_local_id, e.suggested_relation, e.target_local_id) for e in cs.edges}
     assert ("document", "AUTHORED_BY", "person:email:priya.shah@northwind.io") in edges
-    assert ("document", "OWNED_BY", "person:email:mike.rodriguez@northwind.io") in edges     # proposed only
-    assert ("document", "EDITED_BY", "person:email:sarah.chen@acme.com") in edges            # proposed only
-    assert not any("anyone" in e.target_local_id for e in cs.edges)                          # no email, no edge
+    assert {e.suggested_relation for e in cs.edges} == {"AUTHORED_BY", "WORKS_AT"}           # roles = metadata only
+    assert "person:email:mike.rodriguez@northwind.io" in {e.local_id for e in cs.entities}   # owner still resolved
+    assert any(p.role == "owner" for p in doc.participants)                                  # role kept in record
     pdf = normalize_file(CORPUS / "docs" / "Atlas_Security_Review.pdf")
     pdf_cs = StructuredExtractor(ontology_v12).extract(pdf, uuid.uuid4())
     assert [e.suggested_type for e in pdf_cs.entities] == ["Document"] and pdf_cs.edges == []
@@ -154,8 +154,7 @@ def test_full_corpus_under_v12(kg, atlas_settings, ontology_v12):
         assert not q.find_entity(name="Microsoft Office User")
         titles = {e["canonical_name"] for e in q.list_entities("Document")}
         assert {"Statement of Work: Atlas Rollout", "Atlas Security Review", "Atlas pilot plan"} <= titles
-        gaps = {r["candidate_payload"].get("suggested_relation") for r in q.list_reviews(review_type="NEW_ONTOLOGY_CANDIDATE")}
-        assert gaps == {"OWNED_BY", "EDITED_BY"}
+        assert q.list_reviews(review_type="NEW_ONTOLOGY_CANDIDATE") == []
         assert q.stats()["unsupported_edges"] == 0
     again = KnowledgeIngestionPipeline(kg, atlas_settings, ontology_v12).ingest(CORPUS)
     assert again.stats["documents_unchanged"] == 9

@@ -139,3 +139,17 @@ def test_same_source_supersedes_its_own_property_but_others_conflict(kg, ontolog
         _compile(s, ontology, other, vid3, [acme.model_copy(update={"properties": {"organization_type": "vendor"}})])
         assert s.execute(select(Entity)).scalar_one().properties["organization_type"] == "enterprise customer"
         assert _reviews(s, "CONFLICTING_FACT")
+
+
+def test_governance_decision_on_review_is_audited(kg, ontology):
+    from atlas.db.models import AuditLog
+    from atlas.review.service import resolve_review
+
+    with Session(kg) as s:
+        doc, vid = make_doc(s, "gov")
+        _compile(s, ontology, doc, vid, [ent("a", "Person", "A", email="a@x.com"), ent("b", "Project", "B", project_key="b")],
+                 [edge(doc, vid, "a", "b", "EXECUTIVE_SPONSOR_OF")])
+        [item] = _reviews(s, "NEW_ONTOLOGY_CANDIDATE")
+        resolve_review(s, item.id, "REJECTED", "angel", "not modelled in V1")
+        assert item.status == "REJECTED" and item.resolution["note"] == "not modelled in V1"
+        assert s.execute(select(AuditLog).where(AuditLog.action == "review_rejected")).scalar_one().actor == "angel"

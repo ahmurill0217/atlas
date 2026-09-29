@@ -137,6 +137,18 @@ def reviews(status: str = typer.Option("OPEN"), review_type: str = typer.Option(
 
 
 @app.command()
+def resolve(review_id: str, status: str = typer.Option(..., help="APPROVED | REJECTED | DEFERRED"),
+            reviewer: str = typer.Option(..., help="Who made the decision."),
+            note: str = typer.Option(..., help="Why.")) -> None:
+    """Record a governance decision on a review item (audited)."""
+    from atlas.review.service import resolve_review
+
+    with session_scope() as s:
+        item = resolve_review(s, uuid.UUID(review_id), status.upper(), reviewer, note)
+        typer.echo(f"{item.review_type} -> {item.status} by {reviewer}: {note}")
+
+
+@app.command()
 def stats() -> None:
     """Graph counts, including unsupported edges (must be 0)."""
     with session_scope() as s:

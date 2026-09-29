@@ -11,8 +11,8 @@ rules encoded here:
   - email to/cc/bcc       -> Document SENT_TO Person (recipient_type)          [ontology 1.1]
   - meeting action item   -> ActionItem ORIGINATED_IN Meeting, ASSIGNED_TO Person [ontology 1.1]
   - document author/creator with an email -> Document AUTHORED_BY Person          [ontology 1.2]
-  - document owner / editor (e.g. Drive)  -> proposed OWNED_BY / EDITED_BY (no ontology home:
-                                             surfaced for governance, never invented)
+  - document owner / editor / viewer (e.g. Drive): kept as document metadata only
+    (governance decision 2026-09-28), no edges proposed
 The extractor proposes the same candidates whatever the ontology version; under
 an ontology without a home for them (1.0) the compiler routes them to review.
 """
@@ -29,7 +29,6 @@ from atlas.ontology.models import Ontology
 from atlas.resolution.normalize import domain_of, normalize_name
 
 EXTRACTOR = "structured"
-DOCUMENT_ROLE_PROPOSALS = {"owner": "OWNED_BY", "editor": "EDITED_BY"}
 MIME_TYPES = {"email": "message/rfc822", "text": "text/plain", "pdf": "application/pdf",
               "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
 PROVENANCE = "STRUCTURED_SOURCE"
@@ -68,9 +67,8 @@ class StructuredExtractor:
                     continue  # name-only file metadata never becomes an edge
                 if p.role in ("author", "creator"):
                     self._edge(anchor, people[p.source_field], "AUTHORED_BY", p.source_field, "document.author")
-                elif p.role in DOCUMENT_ROLE_PROPOSALS:
-                    self._edge(anchor, people[p.source_field], DOCUMENT_ROLE_PROPOSALS[p.role], p.source_field,
-                               "document.author")
+                # Other roles (owner, editor, viewer, ...) stay in the stored
+                # NormalizedDocument as metadata; the people are still resolved.
 
         for p in doc.participants:
             self._employment(p, people[p.source_field])

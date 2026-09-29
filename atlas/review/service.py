@@ -82,3 +82,21 @@ def reconcile_with_ontology(session: Session, ontology: Ontology, run_id: uuid.U
                   {"ontology_version": ontology.version, "mapped_to": mapped_to})
             resolved += 1
     return resolved
+
+
+RESOLUTION_STATUSES = {"APPROVED", "REJECTED", "DEFERRED"}
+
+
+def resolve_review(session: Session, review_id: uuid.UUID, status: str, reviewer: str, note: str) -> ReviewItem:
+    """Human governance decision on a review item (audited; the item is kept, never deleted)."""
+    if status not in RESOLUTION_STATUSES:
+        raise ValueError(f"status must be one of {sorted(RESOLUTION_STATUSES)}")
+    item = session.get(ReviewItem, review_id)
+    if item is None:
+        raise LookupError(f"no review item {review_id}")
+    if item.status != "OPEN":
+        raise ValueError(f"review item is already {item.status}")
+    item.status, item.reviewer, item.resolved_at = status, reviewer, func.now()
+    item.resolution = {"decision": status, "note": note}
+    audit(session, f"review_{status.lower()}", "review_item", review_id, None, {"note": note}, actor=reviewer)
+    return item
