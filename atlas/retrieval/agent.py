@@ -75,7 +75,8 @@ def _complete(client, **kwargs):
 
 
 def answer(question: str, settings: Settings | None = None, asker: str | None = None, client=None,
-           brain=None) -> dict:
+           brain=None, tools_allowed: set[str] | None = None) -> dict:
+    """tools_allowed limits the tools offered (e.g. {"search", "read"}: text only, no graph)."""
     settings = settings or get_settings()
     client = client or _client(settings)
     t0 = time.perf_counter()
@@ -87,9 +88,17 @@ def answer(question: str, settings: Settings | None = None, asker: str | None = 
                "\"I\", \"me\", \"we\" and \"you\" in the question mean them." if tools.asker else "")
         messages = [{"role": "system", "content": SYSTEM.format(today=date.today().isoformat(), asker=who)},
                     {"role": "user", "content": question}]
-        for _ in range(MAX_STEPS):
+        offered = [t for t in tools.schemas if tools_allowed is None or t["function"]["name"] in tools_allowed]
+        last = None
+        for step in range(MAX_STEPS):
+            closing = step >= MAX_STEPS - 2                             # the last two turns must answer
+            if closing and step == MAX_STEPS - 2:
+                messages.append({"role": "user", "content": "Out of tool calls: submit your answer now from what "
+                                 "you have, or say the sources do not answer the question."})
             response = _complete(client, model=settings.agent_model, messages=messages,
-                                 tools=tools.schemas + [ANSWER_SCHEMA], tool_choice="required")
+                                 tools=offered + [ANSWER_SCHEMA],
+                                 tool_choice={"type": "function", "function": {"name": "submit_answer"}}
+                                 if closing else "required")
             if response.usage:
                 usage["prompt_tokens"] += response.usage.prompt_tokens
                 usage["completion_tokens"] += response.usage.completion_tokens
@@ -100,6 +109,7 @@ def answer(question: str, settings: Settings | None = None, asker: str | None = 
                 if call.function.name == "submit_answer":
                     submissions += 1
                     report = verify(args.get("parts") or [], tools.ledger)
+                    last = (args, report)
                     trace.append({"tool": "submit_answer", "accepted": report["accepted"],
                                   "failed": len(report["failed"])})
                     if args.get("clarify") or report["accepted"] or submissions >= MAX_SUBMISSIONS:
@@ -118,6 +128,7 @@ def answer(question: str, settings: Settings | None = None, asker: str | None = 
         out = {"question": question, "mode": "agent", "route": "agent", "route_reason": None, "error": None,
                "entities": [], "facts": None, "answer": "", "citations": [], "dropped": [], "clarify": None,
                "tool_calls": trace, "tokens": usage}
+        final = final or last                                          # out of steps: what verified is kept
         if final is None:
             out["error"] = f"no answer after {MAX_STEPS} steps"
         else:

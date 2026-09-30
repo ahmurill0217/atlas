@@ -167,10 +167,10 @@ def index(force: bool = typer.Option(False, "--force", help="Re-embed documents 
 def run_ask(question: str, mode: str = "agent", asker: str | None = None) -> dict:
     """Answer one question: mode agent is the tool-using loop (atlas.retrieval.agent); the
     others are the router's (atlas.retrieval.router)."""
-    if mode == "agent":
+    if mode in ("agent", "agent_text"):
         from atlas.retrieval.agent import answer
 
-        return answer(question, asker=asker)
+        return answer(question, asker=asker, tools_allowed={"search", "read"} if mode == "agent_text" else None)
     from atlas.retrieval.router import ask as route_and_answer
 
     return route_and_answer(question, mode=mode, asker=asker)
@@ -179,7 +179,7 @@ def run_ask(question: str, mode: str = "agent", asker: str | None = None) -> dic
 @app.command()
 def ask(question: str,
         mode: str = typer.Option("agent", "--mode", help="agent (a model calling graph and search tools, answers "
-                                 "verified), auto (route the question), relationship (graph only), "
+                                 "verified), agent_text (the same with search and read only), auto (route the question), relationship (graph only), "
                                  "content (brain + graph profile), baseline (brain alone)."),
         asker: str = typer.Option(None, "--as", help="Email of the person asking, so I / we / you resolve."),
         as_json: bool = typer.Option(False, "--json")) -> None:
