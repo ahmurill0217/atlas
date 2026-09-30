@@ -6,9 +6,10 @@ Export: takeout.google.com -> "Deselect all" -> Mail -> "All Mail data included"
     uv run python scripts/takeout_to_atlas.py "Takeout/Mail/All mail Including Spam and Trash.mbox" \\
         runs/gmail/json --since 2025-01-01 --limit 5000
 
-- Skipped by Gmail label (X-GM-LABELS): Spam, Trash, Chat; Promotions and Social too unless
-  --keep-promotions (they are what a newsletter looks like; the graph ignores broadcast senders
-  anyway, but they cost indexing time).
+- Skipped by Gmail label (X-Gmail-Labels, or X-GM-LABELS in older exports): Spam, Trash, Chat;
+  and, unless --keep-automated, the automated categories: Promotions, Social, Updates, Forums,
+  Purchases, Bills, Travel (notifications and receipts; the graph ignores broadcast senders
+  anyway, but in a personal inbox they are most of the mail). Mail you sent is always kept.
 - --limit keeps the most recent messages; one copy per Message-ID.
 - Body: the text/plain part, else the HTML part reduced to text.
 - Attachments: name and type are recorded on the email. With --attachments DIR, PDF and DOCX
@@ -36,7 +37,8 @@ import typer
 app = typer.Typer(add_completion=False)
 
 SKIP = {"spam", "trash", "chat", "chats"}
-PROMOTIONS = {"category promotions", "category social", "promotions", "social"}
+AUTOMATED = {"category promotions", "category social", "category updates", "category forums",
+             "category purchases", "category bills", "category travel", "promotions", "social"}
 SAVE_TYPES = {"application/pdf": ".pdf",
               "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx"}
 
@@ -91,7 +93,7 @@ def body_text(msg: EmailMessage) -> str:
 
 
 def labels(headers) -> list[str]:
-    raw = str(headers.get("X-GM-LABELS") or "")
+    raw = str(headers.get("X-Gmail-Labels") or headers.get("X-GM-LABELS") or "")
     return [label.strip().strip('"') for label in raw.split(",") if label.strip()]
 
 
@@ -141,10 +143,11 @@ def _stem(mid: str) -> str:
 def main(mbox: Path, out_dir: Path,
          since: str = typer.Option("", help="Only messages on or after this date (YYYY-MM-DD)"),
          limit: int = typer.Option(0, help="Keep the most recent N messages (0 = all)"),
-         keep_promotions: bool = typer.Option(False, help="Keep Promotions and Social"),
+         keep_automated: bool = typer.Option(False, help="Keep Promotions, Social, Updates, Forums, "
+                                             "Purchases, Bills and Travel"),
          attachments: Path = typer.Option(None, help="Save PDF and DOCX attachments here")):
     floor = datetime.fromisoformat(since).replace(tzinfo=timezone.utc) if since else None
-    skip = SKIP | (set() if keep_promotions else PROMOTIONS)
+    skip = SKIP | (set() if keep_automated else AUTOMATED)
     box = mailbox.mbox(str(mbox), create=False)
     counts = {"read": 0, "skipped_label": 0, "before_since": 0, "duplicate": 0, "unparsable": 0}
 
@@ -160,7 +163,8 @@ def main(mbox: Path, out_dir: Path,
         except Exception:                      # a malformed message must not stop the export
             counts["unparsable"] += 1
             continue
-        if skip & {label.lower() for label in message_labels}:
+        names = {label.lower() for label in message_labels}
+        if skip & names and not ("sent" in names and not names & SKIP):
             counts["skipped_label"] += 1
         elif floor and (when is None or when < floor):
             counts["before_since"] += 1

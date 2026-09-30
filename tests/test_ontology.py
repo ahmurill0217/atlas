@@ -14,7 +14,7 @@ EV_TEXT = EvidenceRef(document_id=uuid.uuid4(), evidence_text="Sarah Chen from A
 
 
 def test_loads_with_stable_checksum(ontology):
-    assert ontology.version == "1.0"
+    assert ontology.version == "1.1"
     assert {"Person", "Organization", "Document", "Project", "Event", "Location", "Team", "Meeting", "Product",
             "Contract", "Initiative", "Opportunity", "ActionItem"} == set(ontology.entity_types)
     assert {"Customer", "Vendor"} == set(ontology.roles)
@@ -50,7 +50,7 @@ def test_rejects_alias_collision_and_invalid_mapping(tmp_path):
 
 
 def test_rejects_version_mismatch(tmp_path):
-    msg = _broken(tmp_path, "business.yaml", lambda d: d.update(version="1.1"))
+    msg = _broken(tmp_path, "business.yaml", lambda d: d.update(version="9.9"))
     assert "disagree on version" in msg
 
 

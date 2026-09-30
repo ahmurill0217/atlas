@@ -158,7 +158,7 @@ uv run python -m atlas index
 uv run python -m atlas ask "Who have I emailed most this year?" --as you@gmail.com
 ```
 
-- **Skipped:** Spam, Trash, Chats, Promotions and Social (`--keep-promotions` keeps the last two).
+- **Skipped:** Spam, Trash, Chats, and the automated categories: Promotions, Social, Updates, Forums, Purchases, Bills and Travel (`--keep-automated` keeps those). Mail you sent is always kept.
 - **`--limit`** keeps the most recent messages.
 - **Where your data goes:** everything stays on this machine (`runs/` is git-ignored) except answering. The question, graph facts and retrieved email text go to the answer model (OpenAI).
 

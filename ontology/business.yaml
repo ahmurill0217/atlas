@@ -1,5 +1,5 @@
 # Ontology — Business module.
-version: "1.0"
+version: "1.1"
 module: business
 
 # Roles are facets of an existing entity type, not separate nodes:

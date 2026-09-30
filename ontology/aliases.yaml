@@ -1,7 +1,7 @@
 # Ontology — Aliases. Language variation, NOT schema variation.
 # An extractor's suggested type/relation is looked up here (after exact
 # canonical names). Anything not listed resolves to UNRESOLVED -> review.
-version: "1.0"
+version: "1.1"
 
 entity_types:
   person: {type: Person}

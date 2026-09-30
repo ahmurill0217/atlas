@@ -2,7 +2,7 @@
 # A suggestion maps to a canonical relation ONLY for the listed type pairs.
 # Example: OWNS between Person/Team -> Project means OWNS_PROJECT; OWNS
 # between any other types has no mapping and goes to review.
-version: "1.0"
+version: "1.1"
 
 relation_mappings:
   - suggested: OWNS

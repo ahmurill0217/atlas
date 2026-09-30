@@ -55,12 +55,13 @@ def test_emails_and_meetings_are_one_kind_of_interaction(office):
         since = tools.interactions(tools.asker["id"], _id(tools, "Joe Finnell"), "email", "2026-09-05", None, 10)
     assert joe["candidates"][0]["name"] == "Joe Finnell" and "note" not in joe
     summary = pair["summary"]
-    assert summary["total"] == 4 and summary["meetings together"] == 1 and summary["last_date"] == "2026-09-23"
+    assert summary["all emails and meetings both were on"] == 4 and summary["emails directly between them"] == 3
+    assert summary["meetings together"] == 1 and summary["last_date"] == "2026-09-23"
     assert summary["emails Angel Murillo wrote to Joe Finnell"] == 2
     assert summary["emails Joe Finnell wrote to Angel Murillo"] == 1
     assert pair["last meeting together"]["title"] == "Darwin Standup"
     assert pair["last email Joe Finnell to Angel Murillo"]["date"] == "2026-09-11"
-    assert since["summary"]["total"] == 2                                   # a time window, emails only
+    assert since["summary"]["emails directly between them"] == 2            # a time window, emails only
 
 
 def test_participants_include_invitees_who_did_not_speak(office):
@@ -77,8 +78,10 @@ def test_contacts_leave_out_broadcast_senders(office):
     kg, settings = office
     with Session(kg) as s:
         tools = AtlasTools(s, settings)
+        top = tools.contacts(_id(tools, "Angel Murillo"), "any", None, None, "all", 1)
         names = [c["name"] for c in tools.contacts(_id(tools, "Angel Murillo"), "any", None, None, "all", 10)["contacts"]]
     assert names[0] == "Joe Finnell" and "Claudia Vesel" in names and not any("news" in n for n in names)
+    assert (top["shown"], top["contacts_in_all"]) == (1, 2)                  # the full count, not the page
 
 
 def test_read_shows_who_said_what(office):
@@ -179,7 +182,9 @@ def test_interactions_with_a_company_break_down_by_person(office):
     with Session(kg) as s:
         tools = AtlasTools(s, settings, asker_email="angel.murillo@alloytx.com")
         company = next(c["id"] for c in tools.find("alloytx", "Organization")["candidates"])
+        result = tools.interactions(tools.asker["id"], company, "any", None, None, 1)
         people = {p["name"]: p for p in tools.interactions(tools.asker["id"], company, "any", None, None, 5)["by person"]}
+    assert len(result["by person"]) == 1 and result["summary"]["distinct people there"] == 2
     assert people["Joe Finnell"]["emails_and_meetings"] == 4 and people["Claudia Vesel"]["emails_and_meetings"] == 1
     assert people["Joe Finnell"]["emails they wrote to Angel Murillo"] == 1
     assert people["Joe Finnell"]["emails Angel Murillo wrote to them"] == 2
@@ -205,3 +210,22 @@ def test_the_loop_retries_a_transient_api_error(office, monkeypatch):
     client.chat.completions.create = flaky
     out = agent.answer("Anything?", settings=settings, client=client)
     assert out["answer"] == "The sources do not say." and out["error"] is None
+
+
+def test_out_of_steps_keeps_what_verified_of_the_last_submission(office, monkeypatch):
+    kg, settings = office
+    monkeypatch.setattr(agent, "session_scope", lambda: Session(kg))
+    monkeypatch.setattr(agent, "MAX_STEPS", 3)
+    with Session(kg) as s:
+        doc = AtlasTools(s, settings).participants(
+            AtlasTools(s, settings).find("Darwin Standup", "Meeting")["candidates"][0]["id"])["document_id"]
+    parts = [{"text": "Joe said writing to Benchling needs an audit trail.",
+              "citations": [{"ref": "S1", "quote": "Writing to Benchling needs an audit trail."}]},
+             {"text": "The audit is on September 30.", "citations": [{"ref": "S1", "quote": "needs an audit trail"}]}]
+    client = _Scripted([("read", {"document_id": doc, "offset": 0}),
+                        ("submit_answer", {"clarify": None, "parts": parts}),
+                        ("submit_answer", {"clarify": None, "parts": parts})])
+    out = agent.answer("What did Joe say about Benchling?", settings=settings, client=client)
+    assert "Out of tool calls" in client.seen[1]["content"]               # told to answer on the last turns
+    assert out["error"] is None and out["answer"] == "Joe said writing to Benchling needs an audit trail [S1]."
+    assert out["dropped"][0]["text"] == "The audit is on September 30."

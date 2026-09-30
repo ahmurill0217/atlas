@@ -7,6 +7,8 @@
                         (flast, lastname, digits: not a name; the address stays the handle)
   address patterns      a company that uses first.last also hands out flast (jadams) and
                         lastname (adams) addresses; see handle_patterns / name_patterns
+  provider mailbox      providers that deliver several spellings to one mailbox (Gmail: dots and
+                        a +tag ignored): kassondra.cisneroz+x@gmail.com -> kassondracisneroz@gmail.com
 
 Everything here is a pure function of the address and the policy.
 """
@@ -30,6 +32,19 @@ def registrable_domain(domain: str, multi_part_suffixes: list[str]) -> str:
 def split_address(email: str) -> tuple[str, str]:
     local, _, domain = email.lower().strip().partition("@")
     return local, domain
+
+
+def provider_mailbox(email: str, providers: dict) -> str | None:
+    """The one mailbox a provider delivers this spelling to, or None if the provider has no such rule."""
+    local, domain = split_address(email)
+    rule = providers.get(domain)
+    if not rule or not local:
+        return None
+    if rule.get("ignore_plus_tag"):
+        local = local.split("+", 1)[0]
+    if rule.get("ignore_dots"):
+        local = local.replace(".", "")
+    return f"{local}@{rule.get('same_as') or domain}" if local else None
 
 
 def name_from_local(local: str) -> tuple[str, str] | None:

@@ -1,5 +1,5 @@
 # Ontology — Deterministic policies. Thresholds live here, not in code.
-version: "1.0"
+version: "1.1"
 
 provenance_classes:
   STRUCTURED_SOURCE: {requires: [document_id, source_field]}
@@ -69,6 +69,19 @@ email_identity:
   link_address_patterns: true
   multi_part_suffixes: [co.uk, org.uk, ac.uk, gov.uk, com.au, net.au, org.au, co.nz, co.jp, co.in,
                         com.br, com.mx, com.cn, com.sg, co.za, com.ar, co.kr, com.tr]
+  # Providers that deliver several spellings to one mailbox. Gmail ignores dots and a +tag in the
+  # local part (kassondra.cisneroz+bank@gmail.com is kassondracisneroz@gmail.com), and
+  # googlemail.com is gmail.com. Each spelling gets that one `mailbox`, so they resolve to one person.
+  provider_mailboxes:
+    gmail.com: {ignore_dots: true, ignore_plus_tag: true}
+    googlemail.com: {same_as: gmail.com, ignore_dots: true, ignore_plus_tag: true}
+  # Shared role mailboxes (receptionist@firm.com, info@smallbusiness.com): whoever signs the
+  # display name, the address is not one person. The entity is named by its address and the
+  # display names seen are kept as aliases ("receptionist@firm.com", alias "Kassondra Cisneroz").
+  role_local_parts: [receptionist, reception, frontdesk, front-desk, office, info, hello, contact,
+                     contactus, support, help, helpdesk, sales, billing, accounts, accounting, admin,
+                     hr, careers, jobs, recruiting, talent, interviews, onboarding, team, staff,
+                     service, services, customerservice, orders, bookings, reservations, events]
 
 # Entity resolution thresholds (used by scored matching in later phases).
 resolution:

@@ -14,7 +14,7 @@ _spec.loader.exec_module(takeout)
 
 
 def _msg(mid, subject, date, labels="Inbox", html=None, plain="Hi Sam,\n\nSee attached.\n\nOn Mon, Sam wrote:\n> old",
-         attach=None):
+         attach=None, header="X-GM-LABELS"):
     m = EmailMessage()
     m["From"] = '"Chen, Sarah" <Sarah.Chen@acme.com>'
     m["To"] = "Sam Lee <sam@example.com>, ops@acme.com"
@@ -22,7 +22,7 @@ def _msg(mid, subject, date, labels="Inbox", html=None, plain="Hi Sam,\n\nSee at
     m["Date"] = date
     m["Message-ID"] = f"<{mid}@mail.acme.com>"
     m["X-GM-THRID"] = "1790000000000000001"
-    m["X-GM-LABELS"] = labels
+    m[header] = labels
     if html:
         m.set_content(html, subtype="html")
     else:
@@ -42,15 +42,20 @@ def test_takeout_export_becomes_atlas_email_json(tmp_path):
         _msg("a3", "You won", "Wed, 04 Jun 2025 11:00:00 +0000", labels="Spam"),
         _msg("a4", "50% off", "Wed, 04 Jun 2025 12:00:00 +0000", labels='"Category Promotions",Inbox'),
         _msg("a5", "Old news", "Mon, 01 Jan 2024 10:00:00 +0000"),
+        _msg("a6", "Your order shipped", "Thu, 05 Jun 2025 10:00:00 +0000", labels="Category Updates,Inbox",
+             header="X-Gmail-Labels"),                                     # newer exports' header name
+        _msg("a7", "Re: invoice", "Thu, 05 Jun 2025 11:00:00 +0000", labels="Sent,Category Updates",
+             header="X-Gmail-Labels"),
     ]:
         box.add(m)
     box.flush()
     out, files = tmp_path / "json", tmp_path / "files"
 
-    takeout.main(tmp_path / "all.mbox", out, since="2025-01-01", limit=0, keep_promotions=False, attachments=files)
+    takeout.main(tmp_path / "all.mbox", out, since="2025-01-01", limit=0, keep_automated=False, attachments=files)
 
     written = {json.loads(p.read_text())["message_id"]: p for p in out.rglob("*.json")}
-    assert set(written) == {"a1@mail.acme.com", "a2@mail.acme.com"}   # spam, promotions, old, duplicate gone
+    assert set(written) == {"a1@mail.acme.com", "a2@mail.acme.com", "a7@mail.acme.com"}   # what you sent is kept;
+    # spam, promotions, updates, old and the duplicate are gone
     first = json.loads(written["a1@mail.acme.com"].read_text())
     assert first["subject"] == "Pricing — Q3" and first["thread_id"] == "1790000000000000001"
     assert first["from"] == {"name": "Chen, Sarah", "email": "sarah.chen@acme.com"}
@@ -72,6 +77,6 @@ def test_limit_keeps_the_most_recent(tmp_path):
     for i, day in enumerate(["01", "05", "03"]):
         box.add(_msg(f"m{i}", f"day {day}", f"Sun, {day} Jun 2025 10:00:00 +0000"))
     box.flush()
-    takeout.main(tmp_path / "all.mbox", tmp_path / "json", since="", limit=2, keep_promotions=False, attachments=None)
+    takeout.main(tmp_path / "all.mbox", tmp_path / "json", since="", limit=2, keep_automated=False, attachments=None)
     subjects = {json.loads(p.read_text())["subject"] for p in (tmp_path / "json").rglob("*.json")}
     assert subjects == {"day 05", "day 03"}

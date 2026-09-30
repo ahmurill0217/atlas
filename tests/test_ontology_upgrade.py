@@ -62,4 +62,4 @@ def test_upgrade_closes_gap_reviews_and_keeps_history(kg, atlas_settings, ontolo
         edges = {e.id: e for e in s.execute(select(Edge)).scalars()}
         assert all(edges[i].ontology_version == v == "0.9" for i, v in edges_before.items())  # history intact
         new = [e for i, e in edges.items() if i not in edges_before]
-        assert new and {e.relation_type for e in new} == {"SENT_TO"} and all(e.ontology_version == "1.0" for e in new)
+        assert new and {e.relation_type for e in new} == {"SENT_TO"} and all(e.ontology_version == "1.1" for e in new)

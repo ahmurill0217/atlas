@@ -156,3 +156,50 @@ def test_lastname_handles_link_only_inside_the_company(kg, atlas_settings, ontol
     people = _people(kg)
     assert people["John Lavorato"] == ["john.lavorato@enron.com", "lavorato@enron.com"]     # internal: linked
     assert people["lafontaine"] == ["lafontaine@bankofamerica.com"]                         # external: kept apart
+
+
+# --- provider mailboxes and role addresses (policy 1.1) -------------------------------------
+
+@pytest.mark.parametrize("address, mailbox", [
+    ("kassondra.cisneroz@gmail.com", "kassondracisneroz@gmail.com"),
+    ("Kassondra.Cisneroz+bank@googlemail.com", "kassondracisneroz@gmail.com"),
+    ("kassondracisneroz@gmail.com", "kassondracisneroz@gmail.com")])
+def test_gmail_spellings_share_one_mailbox(ontology, address, mailbox):
+    cs = StructuredExtractor(ontology).extract(_email(address, []), uuid.uuid4())
+    assert _person(cs, address.lower()).identifiers["mailbox"] == mailbox
+
+
+def test_other_consumer_providers_keep_dots(ontology):
+    cs = StructuredExtractor(ontology).extract(_email("sam.lee@yahoo.com", []), uuid.uuid4())
+    assert "mailbox" not in _person(cs, "sam.lee@yahoo.com").identifiers
+
+
+def test_gmail_spellings_resolve_to_one_person(kg, atlas_settings, tmp_path):
+    import json
+
+    from sqlalchemy import text
+    from sqlalchemy.orm import Session
+
+    from atlas.ontology import load_ontology
+    from atlas.pipeline import KnowledgeIngestionPipeline
+    from tests.conftest import ROOT
+
+    for i, sender in enumerate(["Kassy C <kassondra.cisneroz@gmail.com>", "kassondracisneroz@gmail.com"]):
+        (tmp_path / f"m{i}.json").write_text(json.dumps({"source_system": "test", "message_id": f"g{i}",
+                                                         "from": sender, "to": ["me@example.org"],
+                                                         "date": f"2026-01-0{i + 1}T10:00:00Z", "body": "hi"}))
+    KnowledgeIngestionPipeline(kg, atlas_settings, load_ontology(str(ROOT / "ontology"))).ingest(tmp_path)
+    with Session(kg) as s:
+        owners = s.execute(text("""SELECT DISTINCT entity_id FROM kg.entity_external_ids
+                                   WHERE value IN ('kassondra.cisneroz@gmail.com', 'kassondracisneroz@gmail.com')""")).all()
+    assert len(owners) == 1
+
+
+def test_role_addresses_are_named_by_address(ontology):
+    cs = StructuredExtractor(ontology).extract(
+        _email("Kassondra Cisneroz <receptionist@williamacohan.com>", ["Charlie Murillo <info@garagedoor.com>"]),
+        uuid.uuid4())
+    front = _person(cs, "receptionist@williamacohan.com")
+    assert front.name == "receptionist@williamacohan.com" and "Kassondra Cisneroz" in front.aliases
+    assert not front.properties.get("first_name")                  # no person's name on a shared address
+    assert _person(cs, "info@garagedoor.com").name == "info@garagedoor.com"

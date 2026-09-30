@@ -34,6 +34,7 @@ from atlas.resolution.email_identity import (
     display_name,
     name_from_display,
     name_from_local,
+    provider_mailbox,
     registrable_domain,
     split_address,
 )
@@ -56,6 +57,7 @@ class StructuredExtractor:
         self.email_identity = ontology.policies.email_identity
         self.suffixes = self.email_identity.get("multi_part_suffixes", [])
         self.internal_domains = {self.org_domain(d.lower()) for d in (internal_domains or [])}
+        self.role_local_parts = {x.lower() for x in self.email_identity.get("role_local_parts") or []}
 
     def extract(self, doc: NormalizedDocument, document_version_id: uuid.UUID) -> CandidateSet:
         out = CandidateSet(document_id=doc.document_id, document_version_id=document_version_id,
@@ -138,15 +140,18 @@ class StructuredExtractor:
             local, domain = split_address(p.email)
             ids["email"] = p.email
             bulk = self.is_bulk_sender(p.email)       # lists / system senders: no name, no linking
+            role = local in self.role_local_parts      # receptionist@, info@: an address, not a person
             if self.email_identity.get("mailbox_across_subdomains") and not bulk \
                     and not self.is_generic_domain(domain):
                 ids["mailbox"] = f"{local}@{self.org_domain(domain)}"
-            parsed = None if bulk else name_from_display(p.name) or (
+            if mailbox := provider_mailbox(p.email, self.email_identity.get("provider_mailboxes") or {}):
+                ids["mailbox"] = mailbox                # gmail spellings of one address
+            parsed = None if bulk or role else name_from_display(p.name) or (
                 name_from_local(local) if self.email_identity.get("names_from_address") else None)
             if parsed:
                 name = display_name(*parsed)
                 props = dict(zip(("first_name", "last_name"), name.split(" ", 1)))
-            name = name or local
+            name = p.email if role else name or local
         else:
             local_id = f"person:name:{normalize_name(p.name or 'unknown')}"
         aliases = sorted({a for a in (p.name, name) if a})

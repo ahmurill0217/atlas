@@ -261,9 +261,13 @@ class AtlasTools:
                 return "sender" in (x_roles or []) and bool(_RECIPIENT & set(y_roles or []))
             a_to_b = [r for r in rows if r.kind == "email" and wrote(r.a_roles, r.b_roles)]
             b_to_a = [r for r in rows if r.kind == "email" and wrote(r.b_roles, r.a_roles)]
-            summary |= {f"emails {name_a} wrote to {name_b}": len(a_to_b),
+            summary |= {"all emails and meetings both were on": summary.pop("total"),
+                        "emails directly between them": len(a_to_b) + len(b_to_a),
+                        f"emails {name_a} wrote to {name_b}": len(a_to_b),
                         f"emails {name_b} wrote to {name_a}": len(b_to_a),
-                        "meetings together": summary.pop("meetings")}
+                        "meetings together": summary.pop("meetings"),
+                        "note": "'emails directly between them' is what they exchanged (one wrote, the other "
+                                "received); 'all ... both were on' also counts mail others sent to both"}
             for label, subset in ((f"last email {name_a} to {name_b}", a_to_b),
                                   (f"last email {name_b} to {name_a}", b_to_a)):
                 if subset:
@@ -272,11 +276,12 @@ class AtlasTools:
             if meetings:
                 result["last meeting together"] = self._event_record(meetings[0])
             if len(b) > 1:                                   # a company: who there, one record per person
-                result["by person"] = self._by_person(rows, name_a)
+                result["by person"], summary["distinct people there"] = self._by_person(rows, name_a, limit, a)
         return {"summary": {"ref": self._cite(summary), **summary}, **result, "records": records}
 
-    def _by_person(self, rows, name_a: str, limit: int = 15) -> list[dict]:
-        """For interactions with a company: each person there, with volume, direction and dates."""
+    def _by_person(self, rows, name_a: str, limit: int = 15, exclude=()) -> tuple[list[dict], int]:
+        """For interactions with a company: the people there with the most interactions (volume,
+        direction, dates), and how many people there are in all."""
         people: dict[str, dict] = {}
         for r in rows:                                       # newest first
             roles_by_person: dict[str, set] = {}
@@ -284,6 +289,8 @@ class AtlasTools:
                 pid, role = item.split(" ", 1)
                 roles_by_person.setdefault(pid, set()).add(role)
             for pid, roles in roles_by_person.items():
+                if pid in {str(x) for x in exclude}:          # not the person asking, at their own company
+                    continue
                 row = people.setdefault(pid, {"total": 0, "sent_by_them": 0, "sent_to_them": 0,
                                               "first_date": None, "last_date": (r.at or "")[:10], "last": r})
                 row["total"] += 1
@@ -303,13 +310,13 @@ class AtlasTools:
                       f"emails {name_a} wrote to them": row["sent_to_them"],
                       "first_date": row["first_date"], "last_date": row["last_date"], "last_title": last.title}
             out.append({"ref": self._cite(record, last.id, last.title, last.at), **record})
-        return out
+        return out, len(people)
 
     def contacts(self, entity: str, kind: str = "any", since: str | None = None, until: str | None = None,
                  scope: str = "all", limit: int = 10) -> dict:
         a = self._people(entity)
         where = ["e.at >= :floor"]
-        params = {"a": a, "floor": EARLIEST_PLAUSIBLE_DATE.isoformat(), "lim": max(1, min(limit, 30)) * 3}
+        params = {"a": a, "floor": EARLIEST_PLAUSIBLE_DATE.isoformat()}
         if since:
             where.append("e.at >= :since"); params["since"] = since
         if until:
@@ -330,9 +337,10 @@ class AtlasTools:
             JOIN kg.entities x ON x.id = p.person
             WHERE p.person <> ALL(:a)
               AND EXISTS (SELECT 1 FROM parts r WHERE r.person = p.person AND r.role <> 'sender')
-            GROUP BY p.person, x.canonical_name ORDER BY n DESC LIMIT :lim"""), params).all()
+            GROUP BY p.person, x.canonical_name"""), params).all()
         if scope != "all":
             rows = [r for r in rows if bool(r.internal) == (scope == "internal")]
+        rows = sorted(rows, key=lambda r: -r.n)
         out = []
         for r in rows[:max(1, min(limit, 30))]:
             last = self.s.execute(text("SELECT canonical_name FROM kg.entities WHERE id = :i"),
@@ -340,8 +348,10 @@ class AtlasTools:
             record = {"id": str(r.person), "name": r.name, "organization": r.organization,
                       "shared_emails_and_meetings": r.n, "last_date": (r.last or "")[:10], "last_title": last}
             out.append({"ref": self._cite(record, r.last_event, last, r.last), **record})
-        return {"entity": self._entity(entity).canonical_name, "scope": scope, "contacts": out,
-                "note": "broadcast senders (addresses that never receive mail) are left out"}
+        return {"entity": self._entity(entity).canonical_name, "scope": scope, "contacts_in_all": len(rows),
+                "shown": len(out), "contacts": out,
+                "note": "the top contacts by shared emails and meetings; contacts_in_all counts every one. "
+                        "Broadcast senders (addresses that never receive mail) are left out"}
 
     def participants(self, event: str) -> dict:
         ev = self._entity(event)
@@ -384,9 +394,11 @@ class AtlasTools:
             date = row.source_created_at.isoformat()[:10] if row and row.source_created_at else None
             title = row.title if row else section.center_chunk.semantic_identifier
             passage = section.combined_content
+            known = len(self.ledger.entries)
             ref = self.ledger.add(Entry("text", {"document_id": doc_id}, passage, doc_id, title, date))
             out.append({"ref": ref, "document_id": doc_id, "title": title, "date": date,
-                        "source_type": row.source_type if row else None, "text": passage})
+                        "source_type": row.source_type if row else None,
+                        "text": passage if len(self.ledger.entries) > known else f"(shown before as {ref})"})
         return {"query": query, "passages": out}
 
     def read(self, document_id: str, offset: int = 0) -> dict:

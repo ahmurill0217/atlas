@@ -1,7 +1,7 @@
 # Ontology — Core module.
 # Canonical entity and relation types. Nothing outside this directory may
 # define graph schema; extractors may only *propose* against it.
-version: "1.0"
+version: "1.1"
 module: core
 
 entities:
