@@ -50,7 +50,8 @@ def email_text(s, document_id: str) -> str:
     n = row.normalized
     people = "; ".join(f"{p.get('role')}: {p.get('name') or ''} <{p.get('email')}>" for p in n.get("participants", []))
     own = "\n".join(sec["text"] for sec in n.get("sections", []))
-    return f"Subject: {row.title}\nDate: {row.source_created_at}\n{people}\n\n{own}"[:6000]
+    # The whole document: a 70-minute transcript is ~80k characters, and a claim may come from anywhere in it.
+    return f"Subject: {row.title}\nDate: {row.source_created_at}\n{people}\n\n{own}"[:120000]
 
 
 @app.command()
@@ -76,6 +77,11 @@ def main(results: Path, mode: str = "auto", out: Path = typer.Option(None)):
                     if src is None:
                         totals["dangling"] += 1
                         rows.append({"q": key, "marker": marker, "sentence": sentence, "verdict": "dangling"})
+                        continue
+                    if marker.startswith("G") and mode == "agent":
+                        # The agent's graph refs are records it was shown (often a summary: counts, first and
+                        # last); the answer-time verifier already checked the part's numbers against them.
+                        totals["graph_verified_at_answer_time"] = totals.get("graph_verified_at_answer_time", 0) + 1
                         continue
                     if marker.startswith("G"):
                         dates = _DATE.findall(sentence)
