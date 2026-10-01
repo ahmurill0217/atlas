@@ -5,13 +5,17 @@ from __future__ import annotations
 import re
 import unicodedata
 
+# Longer keys are cut: Postgres cannot index a value over ~2.7 KB, and an email whose
+# subject is a pasted timesheet must not fail. No real name comes near this.
+NAME_KEY_MAX = 400
+
 
 def normalize_name(name: str) -> str:
     """'Sarah  CHEN' -> 'sarah chen'; "Acme's" -> 'acme'; punctuation -> space."""
     text = unicodedata.normalize("NFKC", name).casefold()
     text = re.sub(r"['’]s\b", "", text)
     text = re.sub(r"[^\w]+|_", " ", text)
-    return " ".join(text.split())
+    return " ".join(text.split())[:NAME_KEY_MAX].rstrip()
 
 
 def normalize_email(email: str) -> str:

@@ -83,7 +83,7 @@ cp .env.example .env                  # set OPENAI_API_KEY and ATLAS_INTERNAL_DO
 
 ```bash
 uv run python -m atlas ingest examples/business          # documents -> graph (no model; re-runs are no-ops)
-uv run python -m atlas index                             # documents -> brain
+uv run python -m atlas index                             # changed and deleted documents -> brain
 uv run python -m atlas ask "Who at Acme have we dealt with?" --as you@yourco.com
 uv run python -m atlas entity sarah.chen@acme.com        # an entity, its identifiers and edges
 uv run python -m atlas why <edge-id>                     # evidence -> candidates -> decision -> audit
@@ -93,6 +93,21 @@ uv run python -m atlas resolve <review-id> --status REJECTED --reviewer "Your Na
 uv run python -m atlas stats                             # unsupported_edges must be 0
 uv run python -m atlas ontology --details
 ```
+
+**When sources change.** The graph holds only what the current version of each document says; no history is kept.
+- **Changed document:** re-ingesting it replaces everything it contributed. Facts, people and organizations that only the old version supported are removed. Facts other documents also support stay.
+- **Deleted document:** `forget` removes its text, its facts, the entities only it supported, and its examples in the review queue.
+- **Out-of-order versions:** a version older than the stored one (by the source's update time) is skipped as stale.
+- **Search index:** every change is queued, and `index` applies the queue to brain.
+
+```bash
+uv run python -m atlas forget gmail "<message-id>"           # the source deleted it
+uv run python -m atlas ingest runs/gmail/json --prune        # the folder is complete: delete what is missing
+uv run python -m atlas index --all                           # every document, not just the queue
+uv run python -m atlas gc                                    # one-off for graphs built before replace
+```
+
+`--prune` refuses to delete more than 5% of a source's documents unless you add `--yes`, and skips pruning when any file failed.
 
 - `--as <email>` says who is asking, so "I", "we" and "you" mean someone.
 - `--mode` accepts `agent` (the default). The earlier router is kept as a baseline: `auto`, `relationship` (graph only), `content` (brain with the graph profile) and `baseline` (brain alone).

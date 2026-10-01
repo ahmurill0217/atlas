@@ -1,4 +1,4 @@
-"""ORM mapping of the `kg` schema. The Alembic migration (0002) is the DDL source of truth."""
+"""ORM mapping of the `kg` schema. The Alembic migrations (0002 onward) are the DDL source of truth."""
 
 from __future__ import annotations
 
@@ -235,3 +235,11 @@ class AuditLog(Base):
     object_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     ingestion_run_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     details: Mapped[dict] = mapped_column(JSONB, default=dict)
+
+
+class IndexQueue(Base):
+    """The search-index action a document still needs: written with the graph change, drained by `atlas index`."""
+    __tablename__, __table_args__ = "index_queue", {"schema": SCHEMA}
+    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    action: Mapped[str] = mapped_column(Text)                 # upsert | delete
+    enqueued_at: Mapped[datetime] = _now()

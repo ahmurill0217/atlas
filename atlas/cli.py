@@ -16,8 +16,8 @@ from atlas.ontology.loader import OntologyError, load_ontology
 app = typer.Typer(add_completion=False, no_args_is_help=True,
                   help="Atlas V1: deterministic business knowledge graph.")
 
-KG_TABLES = ["audit_log", "review_items", "candidate_edges", "candidate_entities", "edge_evidence", "edges",
-             "entity_merge_history", "entity_external_ids", "entity_aliases", "entities", "document_processing",
+KG_TABLES = ["audit_log", "index_queue", "review_items", "candidate_edges", "candidate_entities", "edge_evidence",
+             "edges", "entity_merge_history", "entity_external_ids", "entity_aliases", "entities", "document_processing",
              "document_sections", "document_versions", "documents", "ingestion_runs", "ontology_versions"]
 
 
@@ -44,12 +44,20 @@ def ontology(details: bool = typer.Option(False, "--details", help="List every t
 
 
 @app.command()
-def ingest(path: str, traces: bool = typer.Option(False, "--traces", help="Print per-document stage output.")) -> None:
+def ingest(path: str, traces: bool = typer.Option(False, "--traces", help="Print per-document stage output."),
+           prune: bool = typer.Option(False, "--prune", help="PATH is the complete listing of its sources: "
+                                      "delete their stored documents it no longer contains."),
+           yes: bool = typer.Option(False, "--yes", help="Prune even beyond 5% of a source's documents.")) -> None:
     """Run the pipeline over a file or directory (Phase 1: structured fields only, no LLM)."""
     from atlas.pipeline import KnowledgeIngestionPipeline
 
-    report = KnowledgeIngestionPipeline().ingest(path, keep_traces=traces)
+    report = KnowledgeIngestionPipeline().ingest(path, keep_traces=traces, prune=prune, force_prune=yes)
     typer.echo(f"run {report.run_id}")
+    if report.stats.get("prune_refused"):
+        typer.echo(f"  not pruned: {report.stats['prune_refused']:g} documents would be deleted (over 5% of a "
+                   "source); check the listing is complete, then re-run with --yes", err=True)
+    if report.stats.get("prune_skipped_failed_files"):
+        typer.echo("  not pruned: some files failed, and their documents would look deleted", err=True)
     for key, value in sorted(report.stats.items()):
         typer.echo(f"  {key:34s} {value:g}")
     for t in report.traces:
@@ -152,15 +160,36 @@ def view(name: str = typer.Argument(None, help="Entity name or email to center o
 
 
 @app.command()
-def index(force: bool = typer.Option(False, "--force", help="Re-embed documents brain already has.")) -> None:
-    """Index every document's text into brain (OpenSearch + local embeddings)."""
-    from atlas.retrieval.brain_bridge import index_all
+def forget(source_system: str, source_external_id: str) -> None:
+    """Delete a document the source deleted: its text, and the facts and entities only it supported."""
+    from atlas.pipeline import KnowledgeIngestionPipeline
+
+    stats = KnowledgeIngestionPipeline().delete_document(source_system, source_external_id)
+    typer.echo("not found" if stats is None else _dump({"deleted": True, **stats}))
+
+
+@app.command()
+def gc() -> None:
+    """One-off: remove old document versions and what only they supported (graphs built before replace)."""
+    from atlas.pipeline import KnowledgeIngestionPipeline
+
+    typer.echo(_dump(KnowledgeIngestionPipeline().collect_garbage()))
+
+
+@app.command()
+def index(all_documents: bool = typer.Option(False, "--all", help="Every document, not just the queue."),
+          force: bool = typer.Option(False, "--force", help="With --all: re-embed documents brain already has.")) -> None:
+    """Bring brain (OpenSearch + local embeddings) up to date: index changed documents, drop deleted ones."""
+    from atlas.retrieval.brain_bridge import drain_queue, index_all
 
     settings = get_settings()
     with session_scope() as s:
-        stats = index_all(s, settings, force=force,
-                          progress=lambda st: typer.echo(f"  {st['documents']} documents ...", err=True)
-                          if st["documents"] % 1024 == 0 else None)
+        if all_documents:
+            stats = index_all(s, settings, force=force,
+                              progress=lambda st: typer.echo(f"  {st['documents']} documents ...", err=True)
+                              if st["documents"] % 1024 == 0 else None)
+        else:
+            stats = drain_queue(s, settings)
     typer.echo(_dump(stats))
 
 

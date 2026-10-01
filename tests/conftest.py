@@ -18,8 +18,8 @@ from atlas.ontology import load_ontology
 
 ROOT = Path(__file__).resolve().parents[1]
 CORPUS = ROOT / "examples" / "business"
-KG_TABLES = ["audit_log", "review_items", "candidate_edges", "candidate_entities", "edge_evidence", "edges",
-             "entity_merge_history", "entity_external_ids", "entity_aliases", "entities", "document_processing",
+KG_TABLES = ["audit_log", "index_queue", "review_items", "candidate_edges", "candidate_entities", "edge_evidence",
+             "edges", "entity_merge_history", "entity_external_ids", "entity_aliases", "entities", "document_processing",
              "document_sections", "document_versions", "documents", "ingestion_runs", "ontology_versions"]
 
 

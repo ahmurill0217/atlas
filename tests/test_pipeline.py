@@ -64,7 +64,7 @@ def test_reingest_is_a_noop(kg, atlas_settings, ontology, phase1_corpus):
     assert snapshot(kg) == before
 
 
-def test_changed_document_adds_version_not_duplicates(kg, atlas_settings, ontology, phase1_corpus):
+def test_changed_document_replaces_its_version_not_duplicates(kg, atlas_settings, ontology, phase1_corpus):
     corpus = phase1_corpus
     ingest(kg, atlas_settings, ontology, corpus)
     before = snapshot(kg)
@@ -77,7 +77,7 @@ def test_changed_document_adds_version_not_duplicates(kg, atlas_settings, ontolo
     after = snapshot(kg)
     assert after["entities"] == before["entities"]
     assert [e[:3] for e in after["edges"]] == [e[:3] for e in before["edges"]]   # same facts
-    assert after["stats"]["document_versions"] == before["stats"]["document_versions"] + 1
+    assert after["stats"]["document_versions"] == before["stats"]["document_versions"]   # the old one is gone
 
 
 def test_fresh_runs_produce_identical_graphs(kg, atlas_settings, ontology, engine, phase1_corpus):

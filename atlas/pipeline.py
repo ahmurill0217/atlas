@@ -5,10 +5,14 @@
       Persist                 document / version (by checksum) / sections
     4 Extract                 candidates (Phase 1: structured fields only, no model)
     5-9 Resolve/Map/Validate/Score/Commit-or-Review   GraphCompiler
-    10 Index                  (embeddings: later phase)
+    10 Sweep                  what the document supported before and no longer does is
+                              removed (atlas.graph.sweep); the search index is queued
 
 Idempotent: a document version is processed at most once per
 (pipeline version, ontology checksum); re-running the same corpus is a no-op.
+The graph is current-only: a changed document replaces its contribution, a deleted one
+(`delete_document`, or `ingest(..., prune=True)`) removes it, and a version older than
+the stored one (by the source's own updated time) is skipped as stale.
 """
 
 from __future__ import annotations
@@ -18,7 +22,7 @@ import uuid
 from pathlib import Path
 
 from pydantic import BaseModel, Field
-from sqlalchemy import Engine, func, select, update
+from sqlalchemy import Engine, delete, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 
 from atlas.compiler.compiler import CompileReport, GraphCompiler
@@ -36,14 +40,16 @@ from atlas.db.models import (
     DocumentProcessing,
     DocumentSection,
     DocumentVersion,
+    EdgeEvidence,
     IngestionRun,
     OntologyVersion,
 )
 from atlas.db.session import get_engine, session_scope
 from atlas.extraction.candidates import CandidateSet
 from atlas.extraction.structured import StructuredExtractor
+from atlas.graph.sweep import DocumentSweep, enqueue_index, lock_document
 from atlas.ingestion.adapters import discover, normalize_file
-from atlas.ingestion.normalized import NormalizedDocument
+from atlas.ingestion.normalized import NormalizedDocument, document_id_for
 from atlas.ontology.loader import OntologyError, load_ontology
 from atlas.ontology.models import Ontology
 from atlas.provenance.audit import audit
@@ -52,13 +58,15 @@ from atlas.review.service import reconcile_with_ontology
 
 class DocumentTrace(BaseModel):
     path: str
-    status: str                                   # processed | unchanged | failed
+    status: str                                   # processed | unchanged | stale | failed
     document_id: uuid.UUID | None = None
+    source_system: str | None = None
     document_version_id: uuid.UUID | None = None
     sections: int = 0
     candidates: CandidateSet | None = None
     report: CompileReport | None = None
     error: str | None = None
+    sweep: dict[str, int] = Field(default_factory=dict)          # what replacing the document removed
     timings_ms: dict[str, float] = Field(default_factory=dict)
 
 
@@ -93,7 +101,12 @@ class KnowledgeIngestionPipeline:
                 "structured_extractor": STRUCTURED_EXTRACTOR_VERSION, "entity_resolver": RESOLVER_VERSION,
                 "ontology": self.ontology.version, "ontology_checksum": self.ontology.checksum}
 
-    def ingest(self, path: str | Path, keep_traces: bool = False) -> RunReport:
+    def ingest(self, path: str | Path, keep_traces: bool = False, prune: bool = False,
+               prune_limit: float = 0.05, force_prune: bool = False) -> RunReport:
+        """Process every file under `path`. With `prune`, `path` is the complete listing of its
+        sources: their stored documents it no longer contains are deleted. A prune is skipped
+        when any file failed (its document cannot be told apart from a deleted one) and refused
+        when it would delete more than `prune_limit` of a source's documents, unless `force_prune`."""
         run_id = uuid.uuid4()
         with session_scope(self.engine) as s:
             s.add(IngestionRun(id=run_id, pipeline_version=PIPELINE_VERSION,
@@ -102,8 +115,11 @@ class KnowledgeIngestionPipeline:
             auto_resolved = self._register_ontology(s, run_id)
         report = RunReport(run_id=run_id)
         stats: dict[str, float] = {"reviews_auto_resolved_by_ontology": auto_resolved} if auto_resolved else {}
+        seen: dict[str, set[uuid.UUID]] = {}
         for file in discover(path):
             trace = self.process_file(file, run_id)
+            if trace.document_id and trace.source_system:
+                seen.setdefault(trace.source_system, set()).add(trace.document_id)
             _add(stats, f"documents_{trace.status}")
             _add(stats, "sections", trace.sections)
             if trace.candidates:
@@ -112,10 +128,14 @@ class KnowledgeIngestionPipeline:
             if trace.report:
                 for key, value in trace.report.stats.items():
                     _add(stats, key, value)
+            for key, value in trace.sweep.items():
+                _add(stats, key, value)
             for stage, ms in trace.timings_ms.items():
                 _add(stats, f"latency_ms_{stage}", round(ms, 2))
             if keep_traces or trace.status == "failed":
                 report.traces.append(trace)
+        if prune:
+            stats.update(self._prune(seen, stats, run_id, prune_limit, force_prune))
         with session_scope(self.engine) as s:
             stats["review_items_opened"] = s.execute(select(func.count()).select_from(AuditLog).where(
                 AuditLog.ingestion_run_id == run_id, AuditLog.action == "review_created")).scalar_one()
@@ -140,8 +160,13 @@ class KnowledgeIngestionPipeline:
             lap("normalize")
             doc = segment(doc)
             lap("segment")
-            trace.document_id, trace.sections = doc.document_id, len(doc.sections)
+            trace.document_id, trace.source_system, trace.sections = doc.document_id, doc.source_system, len(doc.sections)
             with session_scope(self.engine) as s:
+                lock_document(s, doc.document_id)
+                stored = s.get(Document, doc.document_id)
+                if stored and stored.source_updated_at and doc.updated_at and doc.updated_at < stored.source_updated_at:
+                    trace.status = "stale"                 # an older version arriving late
+                    return trace
                 version_id = self._persist(s, doc, run_id)
                 trace.document_version_id = version_id
                 done = s.get(DocumentProcessing, (version_id, PIPELINE_VERSION, self.ontology.checksum))
@@ -149,16 +174,94 @@ class KnowledgeIngestionPipeline:
                     trace.status = "unchanged"
                     return trace
                 lap("persist")
+                sweep = DocumentSweep(s, self.ontology, run_id)
+                prior = sweep.begin(doc.document_id) if stored else None   # a new document has nothing to replace
                 trace.candidates = self.extractor.extract(doc, version_id)
                 lap("extract")
-                trace.report = GraphCompiler(s, self.ontology, run_id).compile(doc, trace.candidates)
+                compiler = GraphCompiler(s, self.ontology, run_id)
+                trace.report = compiler.compile(doc, trace.candidates)
                 lap("compile")
+                if prior:
+                    sweep.finish(doc.document_id, prior, keep_version=version_id,
+                                 kept_evidence=compiler.kept_evidence, raised=compiler.reviews.raised)
+                    if sweep.stats:
+                        audit(s, "document_replaced", "document", doc.document_id, run_id, dict(sweep.stats))
+                    trace.sweep = dict(sweep.stats)
+                    lap("sweep")
                 s.add(DocumentProcessing(document_version_id=version_id, pipeline_version=PIPELINE_VERSION,
                                          ontology_checksum=self.ontology.checksum, ingestion_run_id=run_id))
+                enqueue_index(s, doc.document_id, "upsert")
             trace.status = "processed"
         except Exception as exc:  # one bad document must not sink the run
             trace.status, trace.error = "failed", f"{type(exc).__name__}: {exc}"
         return trace
+
+    # --- deletion ------------------------------------------------------------------------
+
+    def delete_document(self, source_system: str, source_external_id: str,
+                        run_id: uuid.UUID | None = None) -> dict[str, int] | None:
+        """Remove a document the source deleted (or the user can no longer see): its versions,
+        text, evidence, the edges and entities only it supported, and its review examples; the
+        search index is queued to drop it. None if Atlas does not have it."""
+        return self._delete(document_id_for(source_system, source_external_id), run_id)
+
+    def _delete(self, document_id: uuid.UUID, run_id: uuid.UUID | None) -> dict[str, int] | None:
+        with session_scope(self.engine) as s:
+            lock_document(s, document_id)
+            if s.get(Document, document_id) is None:
+                return None
+            sweep = DocumentSweep(s, self.ontology, run_id)
+            stats = dict(sweep.finish(document_id, sweep.begin(document_id)))
+            s.execute(delete(Document).where(Document.id == document_id))
+            enqueue_index(s, document_id, "delete")
+            audit(s, "document_deleted", "document", document_id, run_id, stats)
+        return stats
+
+    def _prune(self, seen: dict[str, set[uuid.UUID]], stats: dict, run_id: uuid.UUID,
+               limit: float, force: bool) -> dict[str, float]:
+        if stats.get("documents_failed"):
+            return {"prune_skipped_failed_files": stats["documents_failed"]}
+        with session_scope(self.engine) as s:
+            stored = {system: set(s.execute(select(Document.id).where(Document.source_system == system)).scalars())
+                      for system in seen}
+        gone = {system: sorted(ids - seen[system]) for system, ids in stored.items()}
+        refused = {system: len(ids) for system, ids in gone.items()
+                   if ids and not force and len(ids) > limit * len(stored[system])}
+        if refused:
+            return {"prune_refused": sum(refused.values())}
+        out: dict[str, float] = {}
+        for ids in gone.values():
+            for document_id in ids:
+                removed = self._delete(document_id, run_id)
+                if removed is not None:
+                    _add(out, "documents_deleted")
+                    for key, value in removed.items():
+                        _add(out, key, value)
+        return out
+
+    def collect_garbage(self) -> dict[str, float]:
+        """One-off cleanup for graphs built before documents replaced their contribution:
+        drop every non-current version, its evidence and candidate rows, and what only it supported."""
+        out: dict[str, float] = {}
+        with session_scope(self.engine) as s:
+            todo = s.execute(text("""SELECT d.id, d.current_version_id FROM kg.documents d
+                                     WHERE EXISTS (SELECT 1 FROM kg.document_versions v
+                                                   WHERE v.document_id = d.id AND v.id <> d.current_version_id)
+                                     ORDER BY d.id""")).all()
+        for document_id, current in todo:
+            with session_scope(self.engine) as s:
+                lock_document(s, document_id)
+                kept = {(r.edge_id, r.evidence_key) for r in s.execute(
+                    select(EdgeEvidence.edge_id, EdgeEvidence.evidence_key)
+                    .where(EdgeEvidence.document_version_id == current))}
+                sweep = DocumentSweep(s, self.ontology)
+                prior = sweep.begin(document_id, spare_version=current, scrub_examples=False)
+                stats = sweep.finish(document_id, prior, keep_version=current, kept_evidence=kept)
+                audit(s, "document_garbage_collected", "document", document_id, None, dict(stats))
+                _add(out, "documents")
+                for key, value in stats.items():
+                    _add(out, key, value)
+        return out
 
     # --- persistence helpers -------------------------------------------------------------
 

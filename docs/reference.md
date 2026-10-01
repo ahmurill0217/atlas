@@ -42,7 +42,7 @@ A document version is processed once per (pipeline version, ontology checksum), 
 | `atlas/extraction/structured.py` | Metadata → candidates, provenance `STRUCTURED_SOURCE` |
 | `atlas/resolution/` | Normalization, identity resolution, email identity rules |
 | `atlas/compiler/` | The only decision-maker |
-| `atlas/graph/` | Repository (the only writer), queries including `explain_edge`, HTML viewer |
+| `atlas/graph/` | Repository (the only writer), sweep (a changed or deleted document replaces its contribution), queries including `explain_edge`, HTML viewer |
 | `atlas/review/`, `atlas/provenance/` | Review queue (deduplicated, with frequency); append-only audit log (a DB trigger blocks UPDATE and DELETE) |
 | `migrations/versions/0002_kg_v1_schema.py`, `0003_…` | The `kg` schema |
 

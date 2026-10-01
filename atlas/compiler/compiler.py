@@ -27,6 +27,7 @@ from atlas.ontology.mapper import MapStatus, map_entity_type, map_relation
 from atlas.ontology.models import Ontology
 from atlas.ontology.validator import validate_edge, validate_entity
 from atlas.provenance.audit import audit
+from atlas.provenance.evidence import evidence_key
 from atlas.resolution.identity import MENTION_KEY, IdentityResolver, Outcome
 from atlas.review.service import ReviewService
 
@@ -57,6 +58,7 @@ class GraphCompiler:
         self.reviews = ReviewService(session, ontology.version, run_id)
         self.resolver = IdentityResolver(session, ontology)
         self.acceptance = ontology.policies.acceptance
+        self.kept_evidence: set[tuple[uuid.UUID, str]] = set()   # (edge id, evidence key) this compile supports
 
     def compile(self, doc: NormalizedDocument, candidates: CandidateSet) -> CompileReport:
         report = CompileReport(document_id=doc.document_id)
@@ -234,6 +236,7 @@ class GraphCompiler:
                                            cand.confidence, cand.evidence.observed_at, cand.properties)
         self.repo.attach_evidence(edge_id, cand.evidence, cand.provenance_class, cand.extractor,
                                   cand.extractor_version, cand.confidence)
+        self.kept_evidence.add((edge_id, evidence_key(cand.evidence)))
         for role, entity in ((rel_def.implies_source_role, src), (rel_def.implies_target_role, tgt)):
             if role:
                 self.repo.enrich(entity.entity_id, {}, [role])

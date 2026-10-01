@@ -31,6 +31,29 @@ Atlas (Postgres, schema kg)                         brain (../brain; OpenSearch 
   - Identity: one person across addresses (`mailbox` identifier, address patterns); organizations by registrable domain; broadcast senders recognized.
 - **brain** is an Onyx-derived library: chunking, local embeddings, hybrid search and cited answers. Atlas sends it each document's own text, prefixed with a header that uses graph-resolved names.
 
+## Keeping both current (`atlas/graph/sweep.py`)
+
+The graph is current-only: no history of source changes is kept.
+
+**A changed document replaces its contribution as a whole.** Steps, in one transaction, under a lock on the document:
+1. The new version is compiled first, so entities in both versions keep their ids.
+2. Everything the document supported before that this compile did not produce again is then removed:
+   - its evidence
+   - edges left with no evidence (edges that keep evidence have their dates and confidence recomputed)
+   - older versions and their text
+   - its examples in review items
+   - entities nothing references any more
+3. Entities that are still referenced get their aliases, roles, and the properties this document had set derived again from the documents that still reference them.
+
+**Other cases:**
+- A deleted document goes through the same steps with nothing produced (`atlas forget`, or `ingest --prune`).
+- A version older than the stored one is skipped as stale.
+- Entities named by a human decision (merge history, a resolved review item) are never removed automatically.
+
+**Search index:** each change writes the document to `kg.index_queue` (`upsert` or `delete`) in the same transaction. `atlas index` applies the queue to brain and clears an entry only after brain confirms it. Graph and index cannot be committed together, and a crash between them leaves the entry queued, never lost.
+
+**Audit log:** it is append-only and records ids and counts for removals, never content.
+
 ## Answering (`atlas ask`, `atlas/retrieval/`)
 
 A model calls tools and writes the answer; a verifier checks it. This replaced a router that classified each question and filled fixed fact templates (`router.py`, kept as the `auto` baseline). The router was right that counts and dates must come from the graph, never from a search sample. It failed because the templates only understood email (meetings were invisible), and because nothing checked citations.

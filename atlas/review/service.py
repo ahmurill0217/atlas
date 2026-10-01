@@ -29,12 +29,14 @@ MAX_EXAMPLES = 5
 class ReviewService:
     def __init__(self, session: Session, ontology_version: str, run_id: uuid.UUID | None = None):
         self.session, self.ontology_version, self.run_id = session, ontology_version, run_id
+        self.raised: set[str] = set()                              # dedupe keys raised through this service
 
     def raise_item(self, review_type: str, dedupe_key: str, reason: str, payload: dict,
                    source_document_id: uuid.UUID | None = None, related_entities: list[uuid.UUID] | None = None,
                    confidence: float | None = None, example: dict | None = None) -> uuid.UUID:
         if review_type not in REVIEW_TYPES:
             raise ValueError(f"unknown review type {review_type}")
+        self.raised.add(dedupe_key)
         new_id = uuid.uuid4()
         inserted = self.session.execute(
             insert(ReviewItem).values(
@@ -50,6 +52,9 @@ class ReviewService:
                   {"review_type": review_type, "dedupe_key": dedupe_key})
             return inserted
         item = self.session.execute(select(ReviewItem).where(ReviewItem.dedupe_key == dedupe_key)).scalar_one()
+        if item.status == "SOURCE_REMOVED":                # closed when its document went; a document raises it again
+            item.status, item.reviewer, item.resolved_at, item.resolution = "OPEN", None, None, None
+            audit(self.session, "review_reopened", "review_item", item.id, self.run_id, {"dedupe_key": dedupe_key})
         examples = list(item.examples)
         if example and example not in examples and len(examples) < MAX_EXAMPLES:
             examples.append(example)
