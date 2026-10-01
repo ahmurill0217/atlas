@@ -14,7 +14,7 @@ EV_TEXT = EvidenceRef(document_id=uuid.uuid4(), evidence_text="Sarah Chen from A
 
 
 def test_loads_with_stable_checksum(ontology):
-    assert ontology.version == "1.1"
+    assert ontology.version == "1.0"
     assert {"Person", "Organization", "Document", "Project", "Event", "Location", "Team", "Meeting", "Product",
             "Contract", "Initiative", "Opportunity", "ActionItem"} == set(ontology.entity_types)
     assert {"Customer", "Vendor"} == set(ontology.roles)

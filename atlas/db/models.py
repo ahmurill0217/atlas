@@ -1,4 +1,4 @@
-"""ORM mapping of the `kg` schema. The Alembic migrations (0002 onward) are the DDL source of truth."""
+"""ORM mapping of the `kg` schema. The Alembic migration (0001) is the DDL source of truth."""
 
 from __future__ import annotations
 

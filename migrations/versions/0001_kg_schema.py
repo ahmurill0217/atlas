@@ -1,16 +1,18 @@
-"""V1.0 canonical knowledge graph schema (Postgres schema `kg`).
+"""The Atlas knowledge-graph schema (Postgres schema `kg`).
 
-Lives beside the prototype tables (schema `public`) so both keep working.
+The local-development migrations 0001-0004 were squashed into this one (see git
+history before commit "Squash migrations and ontology versions"). Databases created
+before the squash were stamped to this revision after their schema was brought up to it.
 
-Revision ID: 0002
-Revises: 0001
-Create Date: 2026-09-28
+Revision ID: 0001
+Revises:
+Create Date: 2026-09-30
 """
 
 from alembic import op
 
-revision = "0002"
-down_revision = "0001"
+revision = "0001"
+down_revision = None
 branch_labels = None
 depends_on = None
 
@@ -98,7 +100,8 @@ def upgrade() -> None:
             identity_strength TEXT NOT NULL,             -- 'identifier' | 'name_only'
             status           TEXT NOT NULL DEFAULT 'active',  -- active | merged | retired
             created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-            updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+            updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+            property_sources JSONB NOT NULL DEFAULT '{}'      -- property -> document id that set it
         );
         CREATE INDEX ix_kg_entities_type ON kg.entities (entity_type);
         CREATE INDEX ix_kg_entities_normalized_name ON kg.entities (entity_type, normalized_name);
@@ -168,6 +171,7 @@ def upgrade() -> None:
             UNIQUE (edge_id, evidence_key)
         );
         CREATE INDEX ix_kg_edge_evidence_document ON kg.edge_evidence (document_id);
+        CREATE INDEX ix_kg_edge_evidence_version ON kg.edge_evidence (document_version_id);
 
         CREATE TABLE kg.entity_merge_history (
             id                UUID PRIMARY KEY,
@@ -194,6 +198,7 @@ def upgrade() -> None:
             created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
         );
         CREATE INDEX ix_kg_candidate_entities_version ON kg.candidate_entities (document_version_id);
+        CREATE INDEX ix_kg_candidate_entities_entity ON kg.candidate_entities (entity_id);
 
         CREATE TABLE kg.candidate_edges (
             id                  UUID PRIMARY KEY,
@@ -209,6 +214,7 @@ def upgrade() -> None:
             created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
         );
         CREATE INDEX ix_kg_candidate_edges_edge ON kg.candidate_edges (edge_id);
+        CREATE INDEX ix_kg_candidate_edges_version ON kg.candidate_edges (document_version_id);
 
         -- Review queue ---------------------------------------------------------------
         CREATE TABLE kg.review_items (
@@ -232,6 +238,14 @@ def upgrade() -> None:
         );
         CREATE INDEX ix_kg_review_items_open ON kg.review_items (status, review_type);
 
+        -- Search-index queue: the action each document still needs in brain, written with the
+        -- graph change and drained by `atlas index` (no FK: a deleted document stays queued).
+        CREATE TABLE kg.index_queue (
+            document_id UUID PRIMARY KEY,
+            action      TEXT NOT NULL,                   -- upsert | delete
+            enqueued_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+
         -- Immutable audit log ---------------------------------------------------------
         CREATE TABLE kg.audit_log (
             id               BIGSERIAL PRIMARY KEY,
@@ -253,6 +267,7 @@ def upgrade() -> None:
             FOR EACH ROW EXECUTE FUNCTION kg.forbid_audit_mutation();
         """
     )
+
 
 
 def downgrade() -> None:

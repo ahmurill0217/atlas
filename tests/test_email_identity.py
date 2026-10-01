@@ -158,7 +158,7 @@ def test_lastname_handles_link_only_inside_the_company(kg, atlas_settings, ontol
     assert people["lafontaine"] == ["lafontaine@bankofamerica.com"]                         # external: kept apart
 
 
-# --- provider mailboxes and role addresses (policy 1.1) -------------------------------------
+# --- provider mailboxes and role addresses --------------------------------------------------
 
 @pytest.mark.parametrize("address, mailbox", [
     ("kassondra.cisneroz@gmail.com", "kassondracisneroz@gmail.com"),

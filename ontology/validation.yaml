@@ -1,5 +1,5 @@
 # Ontology — Deterministic policies. Thresholds live here, not in code.
-version: "1.1"
+version: "1.0"
 
 provenance_classes:
   STRUCTURED_SOURCE: {requires: [document_id, source_field]}
